@@ -1,7 +1,7 @@
 hx
 ==
 
-Bitcoin CLI tools: Haskell port of Sx using Haskoin
+Bitcoin CLI tools: Haskell port of [Sx](https://github.com/spesmilo/sx) using [Haskoin](https://github.com/haskoin/haskoin)
 
 Supported commands:
 
