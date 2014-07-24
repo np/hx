@@ -1,5 +1,6 @@
 import Data.Maybe
 import Data.Word
+import Data.Scientific
 import Network.Haskoin.Crypto
 import Network.Haskoin.Util
 import System.Environment
@@ -12,9 +13,12 @@ interactLines f = interact (unlines . map f . lines)
 interactWords :: (String -> String) -> IO ()
 interactWords f = interactLines (unwords . map f . words)
 
+one_btc_in_satoshi :: Num a => a
+one_btc_in_satoshi = 10^(8 :: Int)
+
 hx_pubkey, hx_addr, hx_wif_to_secret, hx_secret_to_wif,
   hx_hd_to_wif, hx_hd_to_address, hx_hex_to_mnemonic,
-  hx_mnemonic_to_hex :: String -> String
+  hx_mnemonic_to_hex, hx_btc, hx_satoshi :: String -> String
 
 hx_pubkey = bsToHex . encode' . derivePubKey
           . fromMaybe (error "invalid WIF private key") . fromWIF
@@ -58,6 +62,9 @@ hx_hex_to_mnemonic = either error id . toMnemonic
 
 hx_mnemonic_to_hex = bsToHex . either error id . fromMnemonic
 
+hx_btc     = formatScientific Fixed (Just 8) . (/ one_btc_in_satoshi) . read
+hx_satoshi = formatScientific Fixed (Just 0) . (* one_btc_in_satoshi) . read
+
 -- TODO do something better than 'read' to parse the index
 parseWord32 :: String -> Word32
 parseWord32 = read
@@ -81,6 +88,8 @@ mainArgs ["ripemd-hash"]          = BS.interact (bsToHex' . hash160BS)
 mainArgs ["sha256"]               = BS.interact (bsToHex' . hash256BS)
 mainArgs ["hex-to-mnemonic"]      = interactWords hx_hex_to_mnemonic
 mainArgs ["mnemonic-to-hex"]      = interactWords hx_mnemonic_to_hex
+mainArgs ["btc", x]               = putStrLn $ hx_btc x
+mainArgs ["satoshi", x]           = putStrLn $ hx_satoshi x
 mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"Supported commands:"
