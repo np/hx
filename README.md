@@ -17,6 +17,13 @@ Supported commands:
       hx hd-to-address
       hx btc SATOSHI
       hx satoshi BTC
+      hx base58-encode
+      hx base58-decode
+      hx base58check-encode
+      hx base58check-decode
+      hx encode-addr
+      hx encode-addr --script
+      hx decode-addr
       [1] hx ripemd-hash
       [1] hx sha256
       [2] hx hex-to-mnemonic
