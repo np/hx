@@ -2,12 +2,17 @@ import Data.Maybe
 import Data.Word
 import Data.Scientific
 import Data.Binary
+import Data.RFC1751
 import System.Environment
+import Control.Monad (unless)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Builder as BSB
 
 import Network.Haskoin.Crypto
+import Network.Haskoin.Internals (FieldP, FieldN, BigWord(BigWord), Point
+                                 , curveP, curveN, curveG, integerA, integerB
+                                 , getX, getY, addPoint, doublePoint, mulPoint)
 import Network.Haskoin.Util
 
 interactLines :: (String -> String) -> IO ()
@@ -25,6 +30,13 @@ interactOneWord f = interact (unlines . return . f . oneWord . map words . lines
 
 one_btc_in_satoshi :: Num a => a
 one_btc_in_satoshi = 10^(8 :: Int)
+
+-- Non DER
+getFieldN :: Get FieldN
+getFieldN = do
+  (BigWord i) <- get :: Get Word256
+  unless (i < curveN) (fail $ "Get: Integer not in FieldN: " ++ show i)
+  return $ fromInteger i
 
 hx_pubkey, hx_addr, hx_wif_to_secret, hx_secret_to_wif,
   hx_hd_to_wif, hx_hd_to_address, hx_hex_to_mnemonic,
@@ -82,9 +94,7 @@ hx_decode_addr = bsToHex . encode' . getAddrHash
                . fromMaybe (error "invalid bitcoin address") . base58ToAddr
 
 hx_encode_addr :: (Word160 -> Address) -> String -> String
-hx_encode_addr f = addrToBase58 . f
-                 . runGet' get
-                 . fromMaybe (error "invalid hex encoding") . hexToBS
+hx_encode_addr f = addrToBase58 . f . getHex
 
 hx_base58_encode = B8.unpack . encodeBase58
                  . fromMaybe (error "invalid hex encoding") . hexToBS
@@ -112,6 +122,21 @@ parseWord32 = read
 bsToHex' :: BS.ByteString -> BS.ByteString
 bsToHex' = toStrictBS . BSB.toLazyByteString . BSB.byteStringHex
 
+putHex :: Binary a => a -> String
+putHex = bsToHex . runPut' . put
+
+getHexN :: String -> FieldN
+getHexN = runGet' getFieldN . fromMaybe (error "invalid hex encoding") . hexToBS
+
+getHex :: Binary a => String -> a
+getHex = runGet' get . fromMaybe (error "invalid hex encoding") . hexToBS
+
+getPoint :: String -> Point
+getPoint = pubKeyPoint . getHex
+
+putPoint :: Point -> String
+putPoint = putHex . PubKey
+
 mainArgs :: [String] -> IO ()
 mainArgs ["pubkey"]                  = interactWords hx_pubkey
 mainArgs ["addr"]                    = interactWords hx_addr
@@ -134,6 +159,21 @@ mainArgs ["encode-addr"]             = interactWords $ hx_encode_addr PubKeyAddr
 mainArgs ["decode-addr"]             = interactWords hx_decode_addr
 mainArgs ["ripemd-hash"]             = BS.interact $ bsToHex' . hash160BS
 mainArgs ["sha256"]                  = BS.interact $ bsToHex' . hash256BS
+mainArgs ["ec-double", p]            = putStrLn . putPoint . doublePoint $ getPoint p
+mainArgs ["ec-add", p, q]            = putStrLn . putPoint $ addPoint (getPoint p) (getPoint q)
+mainArgs ["ec-multiply", x, p]       = putStrLn . putPoint $ mulPoint (getHexN x) (getPoint p)
+mainArgs ["ec-tweak-add", x, p]      = putStrLn . putPoint $ addPoint (mulPoint (getHexN x) curveG) (getPoint p)
+mainArgs ["ec-add-modp", x, y]       = putStrLn $ putHex (getHex x + getHex y :: FieldP)
+mainArgs ["ec-add-modn", x, y]       = putStrLn $ putHex (getHexN x + getHexN y :: FieldN)
+mainArgs ["ec-g"]                    = putStrLn $ putPoint curveG
+mainArgs ["ec-p"]                    = putStrLn $ putHex (BigWord curveP   :: Word256)
+mainArgs ["ec-n"]                    = putStrLn $ putHex (BigWord curveN   :: Word256)
+mainArgs ["ec-a"]                    = putStrLn $ putHex (BigWord integerA :: Word256)
+mainArgs ["ec-b"]                    = putStrLn $ putHex (BigWord integerB :: Word256)
+mainArgs ["ec-int-modp", x]          = putStrLn $ putHex (BigWord (read x) :: FieldP)
+mainArgs ["ec-int-modn", x]          = putStrLn $ putHex (BigWord (read x) :: FieldN)
+mainArgs ["ec-x", p]                 = putStrLn . putHex . fromMaybe (error "invalid point") . getX $ getPoint p
+mainArgs ["ec-y", p]                 = putStrLn . putHex . fromMaybe (error "invalid point") . getY $ getPoint p
 mainArgs ["btc", x]                  = putStrLn $ hx_btc x
 mainArgs ["satoshi", x]              = putStrLn $ hx_satoshi x
 mainArgs ["rfc1751-key"]             = interact ((++"\n") . hx_rfc1751_key)
@@ -158,6 +198,21 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx encode-addr"
                              ,"hx encode-addr --script                   [0]"
                              ,"hx decode-addr"
+                             ,"hx ec-add-modp  <HEX-FIELDP> <HEX-FIELDP>"
+                             ,"hx ec-add-modn  <HEX-FIELDN> <HEX-FIELDN> [0]"
+                             ,"hx ec-add       <HEX-POINT>  <HEX-POINT>  [0]"
+                             ,"hx ec-double    <HEX-POINT>               [0]"
+                             ,"hx ec-multiply  <HEX-FIELDN> <HEX-POINT>  [0]"
+                             ,"hx ec-tweak-add <HEX-FIELDN> <HEX-POINT>  [0]"
+                             ,"hx ec-g                                   [0]"
+                             ,"hx ec-p                                   [0]"
+                             ,"hx ec-n                                   [0]"
+                             ,"hx ec-a                                   [0]"
+                             ,"hx ec-b                                   [0]"
+                             ,"hx ec-int-p <DECIMAL-INTEGER>             [0]"
+                             ,"hx ec-int-n <DECIMAL-INTEGER>             [0]"
+                             ,"hx ec-x     <HEX-POINT>                   [0]"
+                             ,"hx ec-x     <HEX-POINT>                   [0]"
                              ,"hx ripemd-hash                            [1]"
                              ,"hx sha256                                 [1]"
                              ,"hx hex-to-mnemonic                        [2]"
