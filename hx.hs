@@ -57,8 +57,8 @@ base58ToAddrE :: String -> Address
 base58ToAddrE = fromMaybe (error "invalid bitcoin address") . base58ToAddr
 
 hx_pubkey, hx_addr, hx_wif_to_secret, hx_secret_to_wif,
-  hx_hd_to_wif, hx_hd_to_address, hx_hex_to_mnemonic,
-  hx_mnemonic_to_hex, hx_btc, hx_satoshi,
+  hx_hd_to_wif, hx_hd_to_address, hx_btc, hx_satoshi,
+  hx_bip39_hex, hx_bip39_mnemonic,
   hx_base58_encode, hx_base58_decode, hx_base58check_encode, hx_base58check_decode,
   hx_decode_addr, hx_rfc1751_key, hx_rfc1751_mnemonic
   :: String -> String
@@ -89,10 +89,12 @@ hx_hd_pub (Just i)
   = xPubExport
   . fromMaybe (error "failed to derive public sub key") . flip pubSubKey i . xPubImportE
 
-hx_hex_to_mnemonic = either error id . toMnemonic
-                   . fromMaybe (error "invalid hex encoding") . hexToBS
+hx_bip39_mnemonic = either error id . toMnemonic . hexToBS'
 
-hx_mnemonic_to_hex = bsToHex . either error id . fromMnemonic
+hx_bip39_hex = (++"\n") . bsToHex . either error id . fromMnemonic
+
+hx_bip39_seed :: Passphrase -> Mnemonic -> String
+hx_bip39_seed pf = (++"\n") . bsToHex . either error id . mnemonicToSeed pf
 
 hx_btc     = formatScientific Fixed (Just 8) . (/ one_btc_in_satoshi) . read
 hx_satoshi = formatScientific Fixed (Just 0) . (* one_btc_in_satoshi) . read
@@ -151,8 +153,9 @@ mainArgs ["hd-pub"]                  = interactWords . hx_hd_pub              $ 
 mainArgs ["hd-pub", i]               = interactWords . hx_hd_pub              $ Just (parseWord32 i)
 mainArgs ["hd-to-wif"]               = interactWords hx_hd_to_wif
 mainArgs ["hd-to-address"]           = interactWords hx_hd_to_address
-mainArgs ["hex-to-mnemonic"]         = interactWords hx_hex_to_mnemonic
-mainArgs ["mnemonic-to-hex"]         = interactWords hx_mnemonic_to_hex
+mainArgs ["bip39-mnemonic"]          = interactWords hx_bip39_mnemonic
+mainArgs ["bip39-hex"]               = interact hx_bip39_hex
+mainArgs ["bip39-seed", pass]        = interact hx_bip39_seed pass
 mainArgs ["base58-encode"]           = interactWords hx_base58_encode
 mainArgs ["base58-decode"]           = interactWords hx_base58_decode
 mainArgs ["base58check-encode"]      = interactWords hx_base58check_encode
@@ -216,8 +219,9 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx ec-int-n <DECIMAL-INTEGER>             [0]"
                              ,"hx ec-x     <HEX-POINT>                   [0]"
                              ,"hx ec-x     <HEX-POINT>                   [0]"
-                             ,"hx hex-to-mnemonic                        [2]"
-                             ,"hx mnemonic-to-hex                        [2]"
+                             ,"hx bip39-mnemonic                         [0]"
+                             ,"hx bip39-hex                              [0]"
+                             ,"hx bip39-seed <PASSPHRASE>                [0]"
                              ,"hx rfc1751-key                            [0]"
                              ,"hx rfc1751-mnemonic                       [0]"
                              ,"hx ripemd-hash                            [1]"
@@ -225,7 +229,6 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"[0]: Not available in sx"
                              ,"[1]: The output is consistent with openssl but NOT with sx"
-                             ,"[2]: The output is NOT consistent with sx (nor electrum I guess)"
                              ]
 
 main :: IO ()
