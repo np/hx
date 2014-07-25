@@ -2,7 +2,7 @@ import Data.Maybe
 import Data.Word
 import Data.Scientific
 import Data.Binary
-import Data.RFC1751
+import qualified Data.RFC1751 as RFC1751
 import System.Environment
 import Control.Monad (unless)
 import qualified Data.ByteString as BS
@@ -109,9 +109,9 @@ hx_base58check_decode = bsToHex
                       . decodeBase58Check . B8.pack
 
 hx_rfc1751_key      = bsToHex . toStrictBS
-                    . fromMaybe (error "invalid RFC1751 mnemonic") . mnemonicToKey
+                    . fromMaybe (error "invalid RFC1751 mnemonic") . RFC1751.mnemonicToKey
 
-hx_rfc1751_mnemonic = fromMaybe (error "invalid RFC1751 128-key") . keyToMnemonic . toLazyBS
+hx_rfc1751_mnemonic = fromMaybe (error "invalid RFC1751 128-key") . RFC1751.keyToMnemonic . toLazyBS
                     . fromMaybe (error "invalid hex encoding") . hexToBS
 
 -- TODO do something better than 'read' to parse the index
