@@ -114,7 +114,7 @@ hx_base58check_decode = bsToHex
                       . fromMaybe (error "invalid base58check encoding")
                       . decodeBase58Check . B8.pack
 
-hx_rfc1751_key      = bsToHex . toStrictBS
+hx_rfc1751_key      = (++"\n") . bsToHex . toStrictBS
                     . fromMaybe (error "invalid RFC1751 mnemonic") . RFC1751.mnemonicToKey
 
 hx_rfc1751_mnemonic = fromMaybe (error "invalid RFC1751 128-key") . RFC1751.keyToMnemonic . toLazyBS . hexToBS'
@@ -182,7 +182,7 @@ mainArgs ["ec-x", p]                 = putStrLn . putHex . fromMaybe (error "inv
 mainArgs ["ec-y", p]                 = putStrLn . putHex . fromMaybe (error "invalid point") . getY $ getPoint p
 mainArgs ["btc", x]                  = putStrLn $ hx_btc x
 mainArgs ["satoshi", x]              = putStrLn $ hx_satoshi x
-mainArgs ["rfc1751-key"]             = interact $ (++"\n") . hx_rfc1751_key
+mainArgs ["rfc1751-key"]             = interact hx_rfc1751_key
 mainArgs ["rfc1751-mnemonic"]        = interactOneWord hx_rfc1751_mnemonic
 mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
