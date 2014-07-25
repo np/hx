@@ -38,6 +38,24 @@ getFieldN = do
   unless (i < curveN) (fail $ "Get: Integer not in FieldN: " ++ show i)
   return $ fromInteger i
 
+hexToBS' :: String -> BS.ByteString
+hexToBS' = fromMaybe (error "invalid hex encoding") . hexToBS
+
+decodeBase58S :: String -> BS.ByteString
+decodeBase58S = fromMaybe (error "invalid base58 encoding") . decodeBase58 . B8.pack
+
+xPrvImportE :: String -> XPrvKey
+xPrvImportE = fromMaybe (error "invalid extended private key") . xPrvImport
+
+xPubImportE :: String -> XPubKey
+xPubImportE = fromMaybe (error "invalid extended public key") . xPubImport
+
+fromWIFE :: String -> PrvKey
+fromWIFE = fromMaybe (error "invalid WIF private key") . fromWIF
+
+base58ToAddrE :: String -> Address
+base58ToAddrE = fromMaybe (error "invalid bitcoin address") . base58ToAddr
+
 hx_pubkey, hx_addr, hx_wif_to_secret, hx_secret_to_wif,
   hx_hd_to_wif, hx_hd_to_address, hx_hex_to_mnemonic,
   hx_mnemonic_to_hex, hx_btc, hx_satoshi,
@@ -45,42 +63,31 @@ hx_pubkey, hx_addr, hx_wif_to_secret, hx_secret_to_wif,
   hx_decode_addr, hx_rfc1751_key, hx_rfc1751_mnemonic
   :: String -> String
 
-hx_pubkey = bsToHex . encode' . derivePubKey
-          . fromMaybe (error "invalid WIF private key") . fromWIF
+hx_pubkey = bsToHex . encode' . derivePubKey . fromWIFE
 
-hx_addr = addrToBase58 . pubKeyAddr . decode'
-        . fromMaybe (error "invalid hex encoding") . hexToBS
+hx_addr = addrToBase58 . pubKeyAddr . decode' . hexToBS'
 
-hx_wif_to_secret = bsToHex . runPut' . putPrvKey
-                 . fromMaybe (error "invalid WIF private key") . fromWIF
+hx_wif_to_secret = bsToHex . runPut' . putPrvKey . fromWIFE
 
 hx_secret_to_wif = toWIF
                  . fromMaybe (error "invalid private key") . makePrvKey
-                 . bsToInteger
-                 . fromMaybe (error "invalid hex encoding") . hexToBS
+                 . bsToInteger . hexToBS'
 
-hx_hd_to_wif = xPrvWIF
-             . fromMaybe (error "invalid extended private key") . xPrvImport
+hx_hd_to_wif = xPrvWIF . xPrvImportE
 
 -- TODO support private keys as well
-hx_hd_to_address
-  = addrToBase58 . xPubAddr
-  . fromMaybe (error "invalid extended public key") . xPubImport
+hx_hd_to_address = addrToBase58 . xPubAddr . xPubImportE
 
 hx_hd_priv :: (XPrvKey -> Word32 -> Maybe XPrvKey) -> Word32 -> String -> String
 hx_hd_priv sub i = xPrvExport
                  . fromMaybe (error "failed to derive private sub key") . flip sub i
-                 . fromMaybe (error "invalid extended private key") . xPrvImport
+                 . xPrvImportE
 
 hx_hd_pub :: Maybe Word32 -> String -> String
-hx_hd_pub Nothing
-  = xPubExport
-  . deriveXPubKey
-  . fromMaybe (error "invalid extended private key") . xPrvImport
+hx_hd_pub Nothing = xPubExport . deriveXPubKey . xPrvImportE
 hx_hd_pub (Just i)
   = xPubExport
-  . fromMaybe (error "failed to derive public sub key") . flip pubSubKey i
-  . fromMaybe (error "invalid extended public key") . xPubImport
+  . fromMaybe (error "failed to derive public sub key") . flip pubSubKey i . xPubImportE
 
 hx_hex_to_mnemonic = either error id . toMnemonic
                    . fromMaybe (error "invalid hex encoding") . hexToBS
@@ -90,19 +97,16 @@ hx_mnemonic_to_hex = bsToHex . either error id . fromMnemonic
 hx_btc     = formatScientific Fixed (Just 8) . (/ one_btc_in_satoshi) . read
 hx_satoshi = formatScientific Fixed (Just 0) . (* one_btc_in_satoshi) . read
 
-hx_decode_addr = bsToHex . encode' . getAddrHash
-               . fromMaybe (error "invalid bitcoin address") . base58ToAddr
+hx_decode_addr = bsToHex . encode' . getAddrHash . base58ToAddrE
 
 hx_encode_addr :: (Word160 -> Address) -> String -> String
 hx_encode_addr f = addrToBase58 . f . getHex
 
-hx_base58_encode = B8.unpack . encodeBase58
-                 . fromMaybe (error "invalid hex encoding") . hexToBS
+hx_base58_encode = B8.unpack . encodeBase58 . hexToBS'
 
-hx_base58_decode = bsToHex . fromMaybe (error "invalid base58 encoding") . decodeBase58 . B8.pack
+hx_base58_decode = bsToHex . decodeBase58S
 
-hx_base58check_encode = B8.unpack . encodeBase58Check
-                      . fromMaybe (error "invalid hex encoding") . hexToBS
+hx_base58check_encode = B8.unpack . encodeBase58Check . hexToBS'
 
 hx_base58check_decode = bsToHex
                       . fromMaybe (error "invalid base58check encoding")
@@ -111,8 +115,7 @@ hx_base58check_decode = bsToHex
 hx_rfc1751_key      = bsToHex . toStrictBS
                     . fromMaybe (error "invalid RFC1751 mnemonic") . RFC1751.mnemonicToKey
 
-hx_rfc1751_mnemonic = fromMaybe (error "invalid RFC1751 128-key") . RFC1751.keyToMnemonic . toLazyBS
-                    . fromMaybe (error "invalid hex encoding") . hexToBS
+hx_rfc1751_mnemonic = fromMaybe (error "invalid RFC1751 128-key") . RFC1751.keyToMnemonic . toLazyBS . hexToBS'
 
 -- TODO do something better than 'read' to parse the index
 parseWord32 :: String -> Word32
@@ -126,10 +129,10 @@ putHex :: Binary a => a -> String
 putHex = bsToHex . runPut' . put
 
 getHexN :: String -> FieldN
-getHexN = runGet' getFieldN . fromMaybe (error "invalid hex encoding") . hexToBS
+getHexN = runGet' getFieldN . hexToBS'
 
 getHex :: Binary a => String -> a
-getHex = runGet' get . fromMaybe (error "invalid hex encoding") . hexToBS
+getHex = runGet' get . hexToBS'
 
 getPoint :: String -> Point
 getPoint = pubKeyPoint . getHex
@@ -176,7 +179,7 @@ mainArgs ["ec-x", p]                 = putStrLn . putHex . fromMaybe (error "inv
 mainArgs ["ec-y", p]                 = putStrLn . putHex . fromMaybe (error "invalid point") . getY $ getPoint p
 mainArgs ["btc", x]                  = putStrLn $ hx_btc x
 mainArgs ["satoshi", x]              = putStrLn $ hx_satoshi x
-mainArgs ["rfc1751-key"]             = interact ((++"\n") . hx_rfc1751_key)
+mainArgs ["rfc1751-key"]             = interact $ (++"\n") . hx_rfc1751_key
 mainArgs ["rfc1751-mnemonic"]        = interactOneWord hx_rfc1751_mnemonic
 mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
@@ -187,7 +190,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx secret-to-wif"
                              ,"hx hd-priv INDEX"
                              ,"hx hd-priv --hard INDEX"
-                             ,"hx hd-pub                                [0]"
+                             ,"hx hd-pub                                 [0]"
                              ,"hx hd-pub INDEX"
                              ,"hx hd-to-wif"
                              ,"hx hd-to-address"
@@ -195,15 +198,15 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx base58-decode"
                              ,"hx base58check-encode"
                              ,"hx base58check-decode"
+                             ,"hx decode-addr"
                              ,"hx encode-addr"
                              ,"hx encode-addr --script                   [0]"
-                             ,"hx decode-addr"
+                             ,"hx ec-multiply  <HEX-FIELDN> <HEX-POINT>"
+                             ,"hx ec-tweak-add <HEX-FIELDN> <HEX-POINT>"
                              ,"hx ec-add-modp  <HEX-FIELDP> <HEX-FIELDP>"
                              ,"hx ec-add-modn  <HEX-FIELDN> <HEX-FIELDN> [0]"
                              ,"hx ec-add       <HEX-POINT>  <HEX-POINT>  [0]"
                              ,"hx ec-double    <HEX-POINT>               [0]"
-                             ,"hx ec-multiply  <HEX-FIELDN> <HEX-POINT>  [0]"
-                             ,"hx ec-tweak-add <HEX-FIELDN> <HEX-POINT>  [0]"
                              ,"hx ec-g                                   [0]"
                              ,"hx ec-p                                   [0]"
                              ,"hx ec-n                                   [0]"
@@ -213,12 +216,12 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx ec-int-n <DECIMAL-INTEGER>             [0]"
                              ,"hx ec-x     <HEX-POINT>                   [0]"
                              ,"hx ec-x     <HEX-POINT>                   [0]"
-                             ,"hx ripemd-hash                            [1]"
-                             ,"hx sha256                                 [1]"
                              ,"hx hex-to-mnemonic                        [2]"
                              ,"hx mnemonic-to-hex                        [2]"
                              ,"hx rfc1751-key                            [0]"
                              ,"hx rfc1751-mnemonic                       [0]"
+                             ,"hx ripemd-hash                            [1]"
+                             ,"hx sha256                                 [1]"
                              ,""
                              ,"[0]: Not available in sx"
                              ,"[1]: The output is consistent with openssl but NOT with sx"
