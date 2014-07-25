@@ -16,6 +16,13 @@ interactLines f = interact (unlines . map f . lines)
 interactWords :: (String -> String) -> IO ()
 interactWords f = interactLines (unwords . map f . words)
 
+interactOneWord :: (String -> String) -> IO ()
+interactOneWord f = interact (unlines . return . f . oneWord . map words . lines)
+  where oneWord [[x]] = x
+        oneWord []    = error "too few lines/words"
+        oneWord [_]   = error "only one word expected on the line"
+        oneWord _     = error "only one line expected"
+
 one_btc_in_satoshi :: Num a => a
 one_btc_in_satoshi = 10^(8 :: Int)
 
@@ -23,7 +30,7 @@ hx_pubkey, hx_addr, hx_wif_to_secret, hx_secret_to_wif,
   hx_hd_to_wif, hx_hd_to_address, hx_hex_to_mnemonic,
   hx_mnemonic_to_hex, hx_btc, hx_satoshi,
   hx_base58_encode, hx_base58_decode, hx_base58check_encode, hx_base58check_decode,
-  hx_decode_addr
+  hx_decode_addr, hx_rfc1751_key, hx_rfc1751_mnemonic
   :: String -> String
 
 hx_pubkey = bsToHex . encode' . derivePubKey
@@ -91,6 +98,12 @@ hx_base58check_decode = bsToHex
                       . fromMaybe (error "invalid base58check encoding")
                       . decodeBase58Check . B8.pack
 
+hx_rfc1751_key      = bsToHex . toStrictBS
+                    . fromMaybe (error "invalid RFC1751 mnemonic") . mnemonicToKey
+
+hx_rfc1751_mnemonic = fromMaybe (error "invalid RFC1751 128-key") . keyToMnemonic . toLazyBS
+                    . fromMaybe (error "invalid hex encoding") . hexToBS
+
 -- TODO do something better than 'read' to parse the index
 parseWord32 :: String -> Word32
 parseWord32 = read
@@ -123,6 +136,8 @@ mainArgs ["ripemd-hash"]             = BS.interact $ bsToHex' . hash160BS
 mainArgs ["sha256"]                  = BS.interact $ bsToHex' . hash256BS
 mainArgs ["btc", x]                  = putStrLn $ hx_btc x
 mainArgs ["satoshi", x]              = putStrLn $ hx_satoshi x
+mainArgs ["rfc1751-key"]             = interact ((++"\n") . hx_rfc1751_key)
+mainArgs ["rfc1751-mnemonic"]        = interactOneWord hx_rfc1751_mnemonic
 mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"Supported commands:"
@@ -132,7 +147,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx secret-to-wif"
                              ,"hx hd-priv INDEX"
                              ,"hx hd-priv --hard INDEX"
-                             ,"hx hd-pub"
+                             ,"hx hd-pub                                [0]"
                              ,"hx hd-pub INDEX"
                              ,"hx hd-to-wif"
                              ,"hx hd-to-address"
@@ -141,13 +156,16 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx base58check-encode"
                              ,"hx base58check-decode"
                              ,"hx encode-addr"
-                             ,"hx encode-addr --script"
+                             ,"hx encode-addr --script                   [0]"
                              ,"hx decode-addr"
-                             ,"[1] hx ripemd-hash"
-                             ,"[1] hx sha256"
-                             ,"[2] hx hex-to-mnemonic"
-                             ,"[2] hx mnemonic-to-hex"
+                             ,"hx ripemd-hash                            [1]"
+                             ,"hx sha256                                 [1]"
+                             ,"hx hex-to-mnemonic                        [2]"
+                             ,"hx mnemonic-to-hex                        [2]"
+                             ,"hx rfc1751-key                            [0]"
+                             ,"hx rfc1751-mnemonic                       [0]"
                              ,""
+                             ,"[0]: Not available in sx"
                              ,"[1]: The output is consistent with openssl but NOT with sx"
                              ,"[2]: The output is NOT consistent with sx (nor electrum I guess)"
                              ]
