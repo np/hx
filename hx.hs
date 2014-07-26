@@ -78,8 +78,12 @@ hx_hd_to_wif = xPrvWIF . xPrvImportE
 -- TODO support private keys as well
 hx_hd_to_address = addrToBase58 . xPubAddr . xPubImportE
 
-hx_hd_priv :: (XPrvKey -> Word32 -> Maybe XPrvKey) -> Word32 -> String -> String
-hx_hd_priv sub i = xPrvExport
+hx_hd_priv :: Maybe ((XPrvKey -> Word32 -> Maybe XPrvKey), Word32) -> String -> String
+hx_hd_priv Nothing = xPrvExport
+                   . fromMaybe (error "failed to derived private root key from seed") . makeXPrvKey
+                   . hexToBS'
+hx_hd_priv (Just (sub, i))
+                 = xPrvExport
                  . fromMaybe (error "failed to derive private sub key") . flip sub i
                  . xPrvImportE
 
@@ -147,10 +151,11 @@ mainArgs ["pubkey"]                  = interactWords hx_pubkey
 mainArgs ["addr"]                    = interactWords hx_addr
 mainArgs ["wif-to-secret"]           = interactWords hx_wif_to_secret
 mainArgs ["secret-to-wif"]           = interactWords hx_secret_to_wif
-mainArgs ["hd-priv", i]              = interactWords . hx_hd_priv prvSubKey   $ parseWord32 i
-mainArgs ["hd-priv", "--hard", i]    = interactWords . hx_hd_priv primeSubKey $ parseWord32 i
-mainArgs ["hd-pub"]                  = interactWords . hx_hd_pub              $ Nothing
-mainArgs ["hd-pub", i]               = interactWords . hx_hd_pub              $ Just (parseWord32 i)
+mainArgs ["hd-priv"]                 = interactWords $ hx_hd_priv   Nothing
+mainArgs ["hd-priv", i]              = interactWords . hx_hd_priv $ Just (prvSubKey,   parseWord32 i)
+mainArgs ["hd-priv", "--hard", i]    = interactWords . hx_hd_priv $ Just (primeSubKey, parseWord32 i)
+mainArgs ["hd-pub"]                  = interactWords $ hx_hd_pub    Nothing
+mainArgs ["hd-pub", i]               = interactWords . hx_hd_pub  . Just $ parseWord32 i
 mainArgs ["hd-to-wif"]               = interactWords hx_hd_to_wif
 mainArgs ["hd-to-address"]           = interactWords hx_hd_to_address
 mainArgs ["bip39-mnemonic"]          = interactWords hx_bip39_mnemonic
@@ -191,6 +196,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx addr"
                              ,"hx wif-to-secret"
                              ,"hx secret-to-wif"
+                             ,"hx hd-priv                                [0]"
                              ,"hx hd-priv INDEX"
                              ,"hx hd-priv --hard INDEX"
                              ,"hx hd-pub                                 [0]"
