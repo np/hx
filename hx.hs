@@ -70,7 +70,7 @@ pubSubKeyE :: XPubKey -> Word32 -> XPubKey
 pubSubKeyE k = fromMaybe (error "failed to derive public sub key") . pubSubKey k
 
 hx_pubkey, hx_addr, hx_wif_to_secret, hx_secret_to_wif,
-  hx_hd_to_wif, hx_hd_to_address, hx_btc, hx_satoshi,
+  hx_hd_to_wif, hx_hd_to_address, hx_hd_to_pubkey, hx_btc, hx_satoshi,
   hx_bip39_hex, hx_bip39_mnemonic,
   hx_base58_encode, hx_base58_decode, hx_base58check_encode, hx_base58check_decode,
   hx_decode_addr, hx_rfc1751_key, hx_rfc1751_mnemonic
@@ -165,6 +165,7 @@ mainArgs ["hd-priv", "--hard", i]    = interactWords . hx_hd_priv $ Just (primeS
 mainArgs ["hd-pub"]                  = interactWords $ hx_hd_pub    Nothing
 mainArgs ["hd-pub", i]               = interactWords . hx_hd_pub  . Just $ parseWord32 i
 mainArgs ["hd-to-wif"]               = interactWords hx_hd_to_wif
+mainArgs ["hd-to-pubkey"]            = interactWords hx_hd_to_pubkey
 mainArgs ["hd-to-address"]           = interactWords hx_hd_to_address
 mainArgs ["bip39-mnemonic"]          = interactWords hx_bip39_mnemonic
 mainArgs ["bip39-hex"]               = interact hx_bip39_hex
@@ -211,6 +212,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx hd-pub INDEX"
                              ,"hx hd-to-wif"
                              ,"hx hd-to-address"
+                             ,"hx hd-to-pubkey                           [0]"
                              ,"hx base58-encode"
                              ,"hx base58-decode"
                              ,"hx base58check-encode"
