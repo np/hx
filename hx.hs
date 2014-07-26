@@ -2,6 +2,7 @@ import Data.Maybe
 import Data.Word
 import Data.Scientific
 import Data.Binary
+import Data.Char (isDigit)
 import qualified Data.RFC1751 as RFC1751
 import System.Environment
 import Control.Monad (unless)
@@ -54,6 +55,15 @@ xMasterImportE :: String -> XPrvKey
 xMasterImportE = fromMaybe (error "failed to derived private root key from seed") . makeXPrvKey
                . hexToBS'
 
+derivePath :: String -> XPrvKey -> XPrvKey
+derivePath []       = id
+derivePath ('/':xs) = goIndex $ span isDigit xs
+  where
+  goIndex ([], _)       = error "empty path segment"
+  goIndex (ys, '\'':zs) = derivePath zs . flip primeSubKeyE (read ys)
+  goIndex (ys, zs)      = derivePath zs . flip prvSubKeyE   (read ys)
+derivePath _ = error "malformed path"
+
 fromWIFE :: String -> PrvKey
 fromWIFE = fromMaybe (error "invalid WIF private key") . fromWIF
 
@@ -100,6 +110,13 @@ hx_hd_priv (Just (sub, i)) = xPrvExport . flip sub i . xPrvImportE
 hx_hd_pub :: Maybe Word32 -> String -> String
 hx_hd_pub Nothing  = xPubExport . deriveXPubKey     . xPrvImportE
 hx_hd_pub (Just i) = xPubExport . flip pubSubKeyE i . xPubImportE
+
+hx_hd_path :: String -> String -> String
+hx_hd_path (m:path) = f m . derivePath path . xMasterImportE
+  where f 'M' = xPubExport . deriveXPubKey
+        f 'm' = xPrvExport
+        f  c  = error $ "Root path expected to be either 'm' or 'M' not '" ++ c : "'"
+hx_hd_path path = error $ "Invalid path: " ++ show path
 
 hx_bip39_mnemonic = either error id . toMnemonic . hexToBS'
 
@@ -164,6 +181,7 @@ mainArgs ["hd-priv", i]              = interactWords . hx_hd_priv $ Just (prvSub
 mainArgs ["hd-priv", "--hard", i]    = interactWords . hx_hd_priv $ Just (primeSubKeyE, parseWord32 i)
 mainArgs ["hd-pub"]                  = interactWords $ hx_hd_pub    Nothing
 mainArgs ["hd-pub", i]               = interactWords . hx_hd_pub  . Just $ parseWord32 i
+mainArgs ["hd-path", p]              = interactWords $ hx_hd_path p
 mainArgs ["hd-to-wif"]               = interactWords hx_hd_to_wif
 mainArgs ["hd-to-pubkey"]            = interactWords hx_hd_to_pubkey
 mainArgs ["hd-to-address"]           = interactWords hx_hd_to_address
@@ -210,6 +228,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx hd-priv --hard INDEX"
                              ,"hx hd-pub                                 [0]"
                              ,"hx hd-pub INDEX"
+                             ,"hx hd-path <PATH>                         [0]"
                              ,"hx hd-to-wif"
                              ,"hx hd-to-address"
                              ,"hx hd-to-pubkey                           [0]"
@@ -245,6 +264,10 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"[0]: Not available in sx"
                              ,"[1]: The output is consistent with openssl but NOT with sx"
+                             ,"PATH ::= ('M' | 'm') <PATH-CONT>"
+                             ,"PATH-CONT ::= {- empty -}"
+                             ,"            | '/' <INDEX> <PATH-CONT>"
+                             ,"            | '/' <INDEX> '\\'' <PATH-CONT>"
                              ]
 
 main :: IO ()
