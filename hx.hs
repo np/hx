@@ -50,11 +50,24 @@ xPrvImportE = fromMaybe (error "invalid extended private key") . xPrvImport
 xPubImportE :: String -> XPubKey
 xPubImportE = fromMaybe (error "invalid extended public key") . xPubImport
 
+xMasterImportE :: String -> XPrvKey
+xMasterImportE = fromMaybe (error "failed to derived private root key from seed") . makeXPrvKey
+               . hexToBS'
+
 fromWIFE :: String -> PrvKey
 fromWIFE = fromMaybe (error "invalid WIF private key") . fromWIF
 
 base58ToAddrE :: String -> Address
 base58ToAddrE = fromMaybe (error "invalid bitcoin address") . base58ToAddr
+
+prvSubKeyE :: XPrvKey -> Word32 -> XPrvKey
+prvSubKeyE k = fromMaybe (error "failed to derive private sub key") . prvSubKey k
+
+primeSubKeyE :: XPrvKey -> Word32 -> XPrvKey
+primeSubKeyE k = fromMaybe (error "failed to derive private prime sub key") . primeSubKey k
+
+pubSubKeyE :: XPubKey -> Word32 -> XPubKey
+pubSubKeyE k = fromMaybe (error "failed to derive public sub key") . pubSubKey k
 
 hx_pubkey, hx_addr, hx_wif_to_secret, hx_secret_to_wif,
   hx_hd_to_wif, hx_hd_to_address, hx_btc, hx_satoshi,
@@ -63,7 +76,7 @@ hx_pubkey, hx_addr, hx_wif_to_secret, hx_secret_to_wif,
   hx_decode_addr, hx_rfc1751_key, hx_rfc1751_mnemonic
   :: String -> String
 
-hx_pubkey = bsToHex . encode' . derivePubKey . fromWIFE
+hx_pubkey = putHex . derivePubKey . fromWIFE
 
 hx_addr = addrToBase58 . pubKeyAddr . decode' . hexToBS'
 
@@ -78,20 +91,15 @@ hx_hd_to_wif = xPrvWIF . xPrvImportE
 -- TODO support private keys as well
 hx_hd_to_address = addrToBase58 . xPubAddr . xPubImportE
 
-hx_hd_priv :: Maybe ((XPrvKey -> Word32 -> Maybe XPrvKey), Word32) -> String -> String
-hx_hd_priv Nothing = xPrvExport
-                   . fromMaybe (error "failed to derived private root key from seed") . makeXPrvKey
-                   . hexToBS'
-hx_hd_priv (Just (sub, i))
-                 = xPrvExport
-                 . fromMaybe (error "failed to derive private sub key") . flip sub i
-                 . xPrvImportE
+hx_hd_to_pubkey = putHex . xPubKey . xPubImportE
+
+hx_hd_priv :: Maybe ((XPrvKey -> Word32 -> XPrvKey), Word32) -> String -> String
+hx_hd_priv Nothing         = xPrvExport . xMasterImportE
+hx_hd_priv (Just (sub, i)) = xPrvExport . flip sub i . xPrvImportE
 
 hx_hd_pub :: Maybe Word32 -> String -> String
-hx_hd_pub Nothing = xPubExport . deriveXPubKey . xPrvImportE
-hx_hd_pub (Just i)
-  = xPubExport
-  . fromMaybe (error "failed to derive public sub key") . flip pubSubKey i . xPubImportE
+hx_hd_pub Nothing  = xPubExport . deriveXPubKey     . xPrvImportE
+hx_hd_pub (Just i) = xPubExport . flip pubSubKeyE i . xPubImportE
 
 hx_bip39_mnemonic = either error id . toMnemonic . hexToBS'
 
@@ -132,7 +140,7 @@ bsToHex' :: BS.ByteString -> BS.ByteString
 bsToHex' = toStrictBS . BSB.toLazyByteString . BSB.byteStringHex
 
 putHex :: Binary a => a -> String
-putHex = bsToHex . runPut' . put
+putHex = bsToHex . encode'
 
 getHexN :: String -> FieldN
 getHexN = runGet' getFieldN . hexToBS'
@@ -152,8 +160,8 @@ mainArgs ["addr"]                    = interactWords hx_addr
 mainArgs ["wif-to-secret"]           = interactWords hx_wif_to_secret
 mainArgs ["secret-to-wif"]           = interactWords hx_secret_to_wif
 mainArgs ["hd-priv"]                 = interactWords $ hx_hd_priv   Nothing
-mainArgs ["hd-priv", i]              = interactWords . hx_hd_priv $ Just (prvSubKey,   parseWord32 i)
-mainArgs ["hd-priv", "--hard", i]    = interactWords . hx_hd_priv $ Just (primeSubKey, parseWord32 i)
+mainArgs ["hd-priv", i]              = interactWords . hx_hd_priv $ Just (prvSubKeyE,   parseWord32 i)
+mainArgs ["hd-priv", "--hard", i]    = interactWords . hx_hd_priv $ Just (primeSubKeyE, parseWord32 i)
 mainArgs ["hd-pub"]                  = interactWords $ hx_hd_pub    Nothing
 mainArgs ["hd-pub", i]               = interactWords . hx_hd_pub  . Just $ parseWord32 i
 mainArgs ["hd-to-wif"]               = interactWords hx_hd_to_wif
