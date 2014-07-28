@@ -9,6 +9,7 @@ Supported commands:
     hx addr
     hx wif-to-secret
     hx secret-to-wif
+    hx mktx <TXFILE> --input <TXHASH>:<INDEX> ... --output <ADDR>:<AMOUNT>
     hx hd-priv                                [0]
     hx hd-priv <INDEX>
     hx hd-priv --hard <INDEX>

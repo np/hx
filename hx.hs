@@ -1,4 +1,5 @@
 import Data.Maybe
+import Data.Either (partitionEithers)
 import Data.Word
 import Data.Scientific
 import Data.Binary
@@ -13,7 +14,8 @@ import qualified Data.ByteString.Builder as BSB
 import Network.Haskoin.Crypto
 import Network.Haskoin.Internals (FieldP, FieldN, BigWord(BigWord), Point
                                  , curveP, curveN, curveG, integerA, integerB
-                                 , getX, getY, addPoint, doublePoint, mulPoint)
+                                 , getX, getY, addPoint, doublePoint, mulPoint
+                                 , OutPoint(OutPoint), buildAddrTx)
 import Network.Haskoin.Util
 
 interactLines :: (String -> String) -> IO ()
@@ -78,6 +80,28 @@ primeSubKeyE k = fromMaybe (error "failed to derive private prime sub key") . pr
 
 pubSubKeyE :: XPubKey -> Word32 -> XPubKey
 pubSubKeyE k = fromMaybe (error "failed to derive public sub key") . pubSubKey k
+
+splitOn :: Char -> String -> (String, String)
+splitOn c xs = (ys, tail zs)
+  where (ys,zs) = span (/= c) xs
+
+readOutPoint :: String -> OutPoint
+readOutPoint xs = OutPoint (getHexLE ys) (read zs) where (ys,zs) = splitOn ':' xs
+
+readOutput :: String -> (String,Word64)
+readOutput xs = (ys, read zs) where (ys,zs) = splitOn ':' xs
+
+mktx_args :: [String] -> [Either OutPoint (String,Word64)]
+mktx_args [] = []
+mktx_args ( "--input":input :args) = Left (readOutPoint input) : mktx_args args
+mktx_args (      "-i":input :args) = Left (readOutPoint input) : mktx_args args
+mktx_args ("--output":output:args) = Right (readOutput output) : mktx_args args
+mktx_args (      "-o":output:args) = Right (readOutput output) : mktx_args args
+mktx_args _ = error "mktx_args: unexpected argument"
+
+hx_mktx :: [String] -> String
+hx_mktx args = putHex . either error id . uncurry buildAddrTx
+             . partitionEithers $ mktx_args args
 
 hx_pubkey, hx_addr, hx_wif_to_secret, hx_secret_to_wif,
   hx_hd_to_wif, hx_hd_to_address, hx_hd_to_pubkey, hx_btc, hx_satoshi,
@@ -165,6 +189,10 @@ getHexN = runGet' getFieldN . hexToBS'
 getHex :: Binary a => String -> a
 getHex = runGet' get . hexToBS'
 
+-- Little endian version of getHex
+getHexLE :: Binary a => String -> a
+getHexLE = runGet' get . BS.reverse . hexToBS'
+
 getPoint :: String -> Point
 getPoint = pubKeyPoint . getHex
 
@@ -216,6 +244,7 @@ mainArgs ["btc", x]                  = putStrLn $ hx_btc x
 mainArgs ["satoshi", x]              = putStrLn $ hx_satoshi x
 mainArgs ["rfc1751-key"]             = interact hx_rfc1751_key
 mainArgs ["rfc1751-mnemonic"]        = interactOneWord hx_rfc1751_mnemonic
+mainArgs ("mktx":file:args)          = writeFile file $ hx_mktx args
 mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"Supported commands:"
@@ -223,6 +252,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx addr"
                              ,"hx wif-to-secret"
                              ,"hx secret-to-wif"
+                             ,"hx mktx <TXFILE> --input <TXHASH>:<INDEX> ... --output <ADDR>:<AMOUNT>"
                              ,"hx hd-priv                                [0]"
                              ,"hx hd-priv <INDEX>"
                              ,"hx hd-priv --hard <INDEX>"
