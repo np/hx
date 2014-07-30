@@ -10,6 +10,7 @@ Supported commands:
     hx wif-to-secret
     hx secret-to-wif
     hx mktx <TXFILE> --input <TXHASH>:<INDEX> ... --output <ADDR>:<AMOUNT>
+    hx sign-input <TXFILE> <INDEX> <SCRIPT_CODE>
     hx hd-priv                                [0]
     hx hd-priv <INDEX>
     hx hd-priv --hard <INDEX>

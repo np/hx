@@ -15,7 +15,10 @@ import Network.Haskoin.Crypto
 import Network.Haskoin.Internals (FieldP, FieldN, BigWord(BigWord), Point
                                  , curveP, curveN, curveG, integerA, integerB
                                  , getX, getY, addPoint, doublePoint, mulPoint
-                                 , OutPoint(OutPoint), buildAddrTx)
+                                 , OutPoint(OutPoint), Tx, Script
+                                 , SigHash(SigAll), TxSignature(TxSignature)
+                                 , buildAddrTx, txSigHash, encodeSig
+                                 )
 import Network.Haskoin.Util
 
 interactLines :: (String -> String) -> IO ()
@@ -99,6 +102,9 @@ mktx_args ("--output":output:args) = Right (readOutput output) : mktx_args args
 mktx_args (      "-o":output:args) = Right (readOutput output) : mktx_args args
 mktx_args _ = error "mktx_args: unexpected argument"
 
+putTxSig :: TxSignature -> String
+putTxSig = bsToHex . encodeSig
+
 hx_mktx :: [String] -> String
 hx_mktx args = putHex . either error id . uncurry buildAddrTx
              . partitionEithers $ mktx_args args
@@ -171,6 +177,18 @@ hx_rfc1751_key      = (++"\n") . bsToHex . toStrictBS
                     . fromMaybe (error "invalid RFC1751 mnemonic") . RFC1751.mnemonicToKey
 
 hx_rfc1751_mnemonic = fromMaybe (error "invalid RFC1751 128-key") . RFC1751.keyToMnemonic . toLazyBS . hexToBS'
+
+hx_sign_input :: FilePath -> String -> String -> IO ()
+hx_sign_input file index script_code =
+  do tx <- readFile file
+     interactOneWord $ putTxSig . hx_sign_input' (getHex tx) (read index) (getHex script_code) . fromWIFE
+
+-- The pure and typed counter part of hx_sign_input
+hx_sign_input' :: Tx -> Int -> Script -> PrvKey -> TxSignature
+hx_sign_input' tx index script_output privkey = sig where
+  sh  = SigAll False
+  msg = txSigHash  tx script_output index sh
+  sig = TxSignature (detSignMsg msg privkey) sh
 
 -- TODO do something better than 'read' to parse the index
 parseWord32 :: String -> Word32
@@ -245,6 +263,7 @@ mainArgs ["satoshi", x]              = putStrLn $ hx_satoshi x
 mainArgs ["rfc1751-key"]             = interact hx_rfc1751_key
 mainArgs ["rfc1751-mnemonic"]        = interactOneWord hx_rfc1751_mnemonic
 mainArgs ("mktx":file:args)          = writeFile file $ hx_mktx args
+mainArgs ["sign-input",f,i,s]        = hx_sign_input f i s
 mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"Supported commands:"
@@ -253,6 +272,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx wif-to-secret"
                              ,"hx secret-to-wif"
                              ,"hx mktx <TXFILE> --input <TXHASH>:<INDEX> ... --output <ADDR>:<AMOUNT>"
+                             ,"hx sign-input <TXFILE> <INDEX> <SCRIPT_CODE>"
                              ,"hx hd-priv                                [0]"
                              ,"hx hd-priv <INDEX>"
                              ,"hx hd-priv --hard <INDEX>"
