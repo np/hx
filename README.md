@@ -11,6 +11,7 @@ Supported commands:
     hx secret-to-wif
     hx mktx <TXFILE> --input <TXHASH>:<INDEX> ... --output <ADDR>:<AMOUNT>
     hx sign-input <TXFILE> <INDEX> <SCRIPT_CODE>
+    hx set-input <TXFILE> <INDEX> <SIGNATURE_AND_PUBKEY_SCRIPT>
     hx hd-priv                                [0]
     hx hd-priv <INDEX>
     hx hd-priv --hard <INDEX>

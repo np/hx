@@ -17,6 +17,7 @@ import Network.Haskoin.Internals (FieldP, FieldN, BigWord(BigWord), Point
                                  , getX, getY, addPoint, doublePoint, mulPoint
                                  , OutPoint(OutPoint), Tx, Script
                                  , SigHash(SigAll), TxSignature(TxSignature)
+                                 , txIn, scriptInput
                                  , buildAddrTx, txSigHash, encodeSig
                                  )
 import Network.Haskoin.Util
@@ -178,6 +179,17 @@ hx_rfc1751_key      = (++"\n") . bsToHex . toStrictBS
 
 hx_rfc1751_mnemonic = fromMaybe (error "invalid RFC1751 128-key") . RFC1751.keyToMnemonic . toLazyBS . hexToBS'
 
+-- set-input FILENAME N SIGNATURE_AND_PUBKEY_SCRIPT
+hx_set_input :: FilePath -> String -> String -> IO ()
+hx_set_input file index script =
+  do tx <- readFile file
+     putStrLn . putHex $ hx_set_input' (read index) (hexToBS' script) (getHex tx)
+
+hx_set_input' :: Int -> BS.ByteString -> Tx -> Tx
+hx_set_input' i si tx = tx{ txIn = updateIndex i (txIn tx) f }
+  where f x = x{ scriptInput = si }
+
+
 hx_sign_input :: FilePath -> String -> String -> IO ()
 hx_sign_input file index script_code =
   do tx <- readFile file
@@ -264,6 +276,7 @@ mainArgs ["rfc1751-key"]             = interact hx_rfc1751_key
 mainArgs ["rfc1751-mnemonic"]        = interactOneWord hx_rfc1751_mnemonic
 mainArgs ("mktx":file:args)          = writeFile file $ hx_mktx args
 mainArgs ["sign-input",f,i,s]        = hx_sign_input f i s
+mainArgs ["set-input",f,i,s]         = hx_set_input f i s
 mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"Supported commands:"
@@ -273,6 +286,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx secret-to-wif"
                              ,"hx mktx <TXFILE> --input <TXHASH>:<INDEX> ... --output <ADDR>:<AMOUNT>"
                              ,"hx sign-input <TXFILE> <INDEX> <SCRIPT_CODE>"
+                             ,"hx set-input <TXFILE> <INDEX> <SIGNATURE_AND_PUBKEY_SCRIPT>"
                              ,"hx hd-priv                                [0]"
                              ,"hx hd-priv <INDEX>"
                              ,"hx hd-priv --hard <INDEX>"
