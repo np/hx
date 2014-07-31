@@ -3,6 +3,7 @@ import Data.Either (partitionEithers)
 import Data.Word
 import Data.Scientific
 import Data.Binary
+import Data.Functor ((<$>))
 import Data.Char (isDigit)
 import qualified Data.RFC1751 as RFC1751
 import System.Environment
@@ -22,6 +23,9 @@ import Network.Haskoin.Internals (FieldP, FieldN, BigWord(BigWord), Point
                                  )
 import Network.Haskoin.Util
 
+readTxFile :: FilePath -> IO Tx
+readTxFile file = getHex "transaction" . getOneWord <$> readFile file
+
 interactLines :: (String -> String) -> IO ()
 interactLines f = interact (unlines . map f . lines)
 
@@ -29,7 +33,10 @@ interactWords :: (String -> String) -> IO ()
 interactWords f = interactLines (unwords . map f . words)
 
 interactOneWord :: (String -> String) -> IO ()
-interactOneWord f = interact (unlines . return . f . oneWord . map words . lines)
+interactOneWord f = interact (unlines . return . f . getOneWord)
+
+getOneWord :: String -> String
+getOneWord = oneWord . map words . lines
   where oneWord [[x]] = x
         oneWord []    = error "too few lines/words"
         oneWord [_]   = error "only one word expected on the line"
@@ -45,8 +52,8 @@ getFieldN = do
   unless (i < curveN) (fail $ "Get: Integer not in FieldN: " ++ show i)
   return $ fromInteger i
 
-hexToBS' :: String -> BS.ByteString
-hexToBS' = fromMaybe (error "invalid hex encoding") . hexToBS
+hexToBS' :: String -> String -> BS.ByteString
+hexToBS' msg = fromMaybe (error $ msg ++ ": invalid hex encoding") . hexToBS
 
 decodeBase58S :: String -> BS.ByteString
 decodeBase58S = fromMaybe (error "invalid base58 encoding") . decodeBase58 . B8.pack
@@ -59,7 +66,7 @@ xPubImportE = fromMaybe (error "invalid extended public key") . xPubImport
 
 xMasterImportE :: String -> XPrvKey
 xMasterImportE = fromMaybe (error "failed to derived private root key from seed") . makeXPrvKey
-               . hexToBS'
+               . hexToBS' "seed"
 
 derivePath :: String -> XPrvKey -> XPrvKey
 derivePath []       = id
@@ -90,7 +97,7 @@ splitOn c xs = (ys, tail zs)
   where (ys,zs) = span (/= c) xs
 
 readOutPoint :: String -> OutPoint
-readOutPoint xs = OutPoint (getHexLE ys) (read zs) where (ys,zs) = splitOn ':' xs
+readOutPoint xs = OutPoint (getHexLE "transaction hash" ys) (read zs) where (ys,zs) = splitOn ':' xs
 
 readOutput :: String -> (String,Word64)
 readOutput xs = (ys, read zs) where (ys,zs) = splitOn ':' xs
@@ -106,6 +113,9 @@ mktx_args _ = error "mktx_args: unexpected argument"
 putTxSig :: TxSignature -> String
 putTxSig = bsToHex . encodeSig
 
+getTxSig :: String -> TxSignature
+getTxSig = either error id . decodeSig . hexToBS' "transaction signature"
+
 hx_mktx :: [String] -> String
 hx_mktx args = putHex . either error id . uncurry buildAddrTx
              . partitionEithers $ mktx_args args
@@ -119,13 +129,13 @@ hx_pubkey, hx_addr, hx_wif_to_secret, hx_secret_to_wif,
 
 hx_pubkey = putHex . derivePubKey . fromWIFE
 
-hx_addr = addrToBase58 . pubKeyAddr . decode' . hexToBS'
+hx_addr = addrToBase58 . pubKeyAddr . decode' . hexToBS' "address"
 
 hx_wif_to_secret = bsToHex . runPut' . putPrvKey . fromWIFE
 
 hx_secret_to_wif = toWIF
                  . fromMaybe (error "invalid private key") . makePrvKey
-                 . bsToInteger . hexToBS'
+                 . bsToInteger . hexToBS' "private key"
 
 hx_hd_to_wif = xPrvWIF . xPrvImportE
 
@@ -149,7 +159,7 @@ hx_hd_path (m:path) = f m . derivePath path . xMasterImportE
         f  c  = error $ "Root path expected to be either 'm' or 'M' not '" ++ c : "'"
 hx_hd_path path = error $ "Invalid path: " ++ show path
 
-hx_bip39_mnemonic = either error id . toMnemonic . hexToBS'
+hx_bip39_mnemonic = either error id . toMnemonic . hexToBS' "seed"
 
 hx_bip39_hex = (++"\n") . bsToHex . either error id . fromMnemonic
 
@@ -162,13 +172,13 @@ hx_satoshi = formatScientific Fixed (Just 0) . (* one_btc_in_satoshi) . read
 hx_decode_addr = bsToHex . encode' . getAddrHash . base58ToAddrE
 
 hx_encode_addr :: (Word160 -> Address) -> String -> String
-hx_encode_addr f = addrToBase58 . f . getHex
+hx_encode_addr f = addrToBase58 . f . getHex "address"
 
-hx_base58_encode = B8.unpack . encodeBase58 . hexToBS'
+hx_base58_encode = B8.unpack . encodeBase58 . hexToBS' "input"
 
 hx_base58_decode = bsToHex . decodeBase58S
 
-hx_base58check_encode = B8.unpack . encodeBase58Check . hexToBS'
+hx_base58check_encode = B8.unpack . encodeBase58Check . hexToBS' "input"
 
 hx_base58check_decode = bsToHex
                       . fromMaybe (error "invalid base58check encoding")
@@ -177,13 +187,14 @@ hx_base58check_decode = bsToHex
 hx_rfc1751_key      = (++"\n") . bsToHex . toStrictBS
                     . fromMaybe (error "invalid RFC1751 mnemonic") . RFC1751.mnemonicToKey
 
-hx_rfc1751_mnemonic = fromMaybe (error "invalid RFC1751 128-key") . RFC1751.keyToMnemonic . toLazyBS . hexToBS'
+hx_rfc1751_mnemonic = fromMaybe (error "invalid RFC1751 128 bits key") . RFC1751.keyToMnemonic
+                    . toLazyBS . hexToBS' "128 bits key"
 
 -- set-input FILENAME N SIGNATURE_AND_PUBKEY_SCRIPT
 hx_set_input :: FilePath -> String -> String -> IO ()
 hx_set_input file index script =
-  do tx <- readFile file
-     putStrLn . putHex $ hx_set_input' (read index) (hexToBS' script) (getHex tx)
+  do tx <- readTxFile file
+     putStrLn . putHex $ hx_set_input' (read index) (hexToBS' "script" script) tx
 
 hx_set_input' :: Int -> BS.ByteString -> Tx -> Tx
 hx_set_input' i si tx = tx{ txIn = updateIndex i (txIn tx) f }
@@ -192,8 +203,8 @@ hx_set_input' i si tx = tx{ txIn = updateIndex i (txIn tx) f }
 
 hx_sign_input :: FilePath -> String -> String -> IO ()
 hx_sign_input file index script_code =
-  do tx <- readFile file
-     interactOneWord $ putTxSig . hx_sign_input' (getHex tx) (read index) (getHex script_code) . fromWIFE
+  do tx <- readTxFile file
+     interactOneWord $ putTxSig . hx_sign_input' tx (read index) (getHex "script" script_code) . fromWIFE
 
 -- The pure and typed counter part of hx_sign_input
 hx_sign_input' :: Tx -> Int -> Script -> PrvKey -> TxSignature
@@ -214,17 +225,20 @@ putHex :: Binary a => a -> String
 putHex = bsToHex . encode'
 
 getHexN :: String -> FieldN
-getHexN = runGet' getFieldN . hexToBS'
+getHexN = runGet' getFieldN . hexToBS' "field number modulo N"
 
-getHex :: Binary a => String -> a
-getHex = runGet' get . hexToBS'
+getHexP :: String -> FieldP
+getHexP = getHex "field number modulo P"
+
+getHex :: Binary a => String -> String -> a
+getHex msg = runGet' get . hexToBS' msg
 
 -- Little endian version of getHex
-getHexLE :: Binary a => String -> a
-getHexLE = runGet' get . BS.reverse . hexToBS'
+getHexLE :: Binary a => String -> String -> a
+getHexLE msg = runGet' get . BS.reverse . hexToBS' (msg ++ " (little endian)")
 
 getPoint :: String -> Point
-getPoint = pubKeyPoint . getHex
+getPoint = pubKeyPoint . getHex "curve point"
 
 putPoint :: Point -> String
 putPoint = putHex . PubKey
@@ -259,7 +273,7 @@ mainArgs ["ec-double", p]            = putStrLn . putPoint . doublePoint $ getPo
 mainArgs ["ec-add", p, q]            = putStrLn . putPoint $ addPoint (getPoint p) (getPoint q)
 mainArgs ["ec-multiply", x, p]       = putStrLn . putPoint $ mulPoint (getHexN x) (getPoint p)
 mainArgs ["ec-tweak-add", x, p]      = putStrLn . putPoint $ addPoint (mulPoint (getHexN x) curveG) (getPoint p)
-mainArgs ["ec-add-modp", x, y]       = putStrLn $ putHex (getHex x + getHex y :: FieldP)
+mainArgs ["ec-add-modp", x, y]       = putStrLn $ putHex (getHexP x + getHexP y)
 mainArgs ["ec-add-modn", x, y]       = putStrLn $ putHex (getHexN x + getHexN y :: FieldN)
 mainArgs ["ec-g"]                    = putStrLn $ putPoint curveG
 mainArgs ["ec-p"]                    = putStrLn $ putHex (BigWord curveP   :: Word256)
