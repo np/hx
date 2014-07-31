@@ -19,7 +19,8 @@ import Network.Haskoin.Internals (FieldP, FieldN, BigWord(BigWord), Point
                                  , OutPoint(OutPoint), Tx, Script
                                  , SigHash(SigAll), TxSignature(TxSignature)
                                  , txIn, scriptInput
-                                 , buildAddrTx, txSigHash, encodeSig
+                                 , buildAddrTx, txSigHash, encodeSig, decodeSig
+                                 , getOutputAddress, decodeOutput
                                  )
 import Network.Haskoin.Util
 
@@ -200,6 +201,19 @@ hx_set_input' :: Int -> BS.ByteString -> Tx -> Tx
 hx_set_input' i si tx = tx{ txIn = updateIndex i (txIn tx) f }
   where f x = x{ scriptInput = si }
 
+hx_validsig' :: Tx -> Int -> Script -> TxSignature -> PubKey -> Bool
+hx_validsig' tx i out (TxSignature sig sh) pub =
+  pubKeyAddr pub == a && verifySig (txSigHash tx out i sh) sig pub
+  where a = getOutputAddress (either error id (decodeOutput out))
+
+hx_validsig :: FilePath -> String -> String -> String -> IO ()
+hx_validsig file i s sig =
+  do tx <- readTxFile file
+     interactOneWord $ putSuccess
+                     . hx_validsig' tx (read i) (getHex "script" s) (getTxSig sig)
+                     . getHex "public key"
+  where putSuccess True = "Status: OK"
+        putSuccess  _   = "Status: Failed"
 
 hx_sign_input :: FilePath -> String -> String -> IO ()
 hx_sign_input file index script_code =
@@ -291,6 +305,7 @@ mainArgs ["rfc1751-mnemonic"]        = interactOneWord hx_rfc1751_mnemonic
 mainArgs ("mktx":file:args)          = writeFile file $ hx_mktx args
 mainArgs ["sign-input",f,i,s]        = hx_sign_input f i s
 mainArgs ["set-input",f,i,s]         = hx_set_input f i s
+mainArgs ["validsig",f,i,s,sig]      = hx_validsig f i s sig
 mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"Supported commands:"
@@ -301,6 +316,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx mktx <TXFILE> --input <TXHASH>:<INDEX> ... --output <ADDR>:<AMOUNT>"
                              ,"hx sign-input <TXFILE> <INDEX> <SCRIPT_CODE>"
                              ,"hx set-input <TXFILE> <INDEX> <SIGNATURE_AND_PUBKEY_SCRIPT>"
+                             ,"hx validsig <TXFILE> <INDEX> <SCRIPT_CODE> <SIGNATURE>"
                              ,"hx hd-priv                                [0]"
                              ,"hx hd-priv <INDEX>"
                              ,"hx hd-priv --hard <INDEX>"
@@ -342,6 +358,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"[0]: Not available in sx"
                              ,"[1]: The output is consistent with openssl but NOT with sx"
+                             ,""
                              ,"PATH ::= ('M' | 'm') <PATH-CONT>"
                              ,"PATH-CONT ::= {- empty -}"
                              ,"            | '/' <INDEX> <PATH-CONT>"
