@@ -29,13 +29,13 @@ readTxFile :: FilePath -> IO Tx
 readTxFile file = getHex "transaction" . getOneWord <$> readFile file
 
 interactLines :: (String -> String) -> IO ()
-interactLines f = interact (unlines . map f . lines)
+interactLines f = interact $ unlines . map f . lines
 
 interactWords :: (String -> String) -> IO ()
-interactWords f = interactLines (unwords . map f . words)
+interactWords f = interactLines $ unwords . map f . words
 
 interactOneWord :: (String -> String) -> IO ()
-interactOneWord f = interact (unlines . return . f . getOneWord)
+interactOneWord f = interact $ unlines . return . f . getOneWord
 
 getOneWord :: String -> String
 getOneWord = oneWord . map words . lines
@@ -167,7 +167,7 @@ hx_hd_to_address = addrToBase58 . xPubAddr . xPubImportE
 
 hx_hd_to_pubkey = putHex . xPubKey . xPubImportE
 
-hx_hd_priv :: Maybe ((XPrvKey -> Word32 -> XPrvKey), Word32) -> String -> String
+hx_hd_priv :: Maybe (XPrvKey -> Word32 -> XPrvKey, Word32) -> String -> String
 hx_hd_priv Nothing         = xPrvExport . xMasterImportE
 hx_hd_priv (Just (sub, i)) = xPrvExport . flip sub i . xPrvImportE
 
