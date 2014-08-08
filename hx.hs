@@ -5,6 +5,7 @@ import Data.Scientific
 import Data.Binary
 import Data.Functor ((<$>))
 import Data.Char (isDigit)
+import Data.List (isPrefixOf)
 import qualified Data.RFC1751 as RFC1751
 import System.Environment
 import Control.Monad (unless)
@@ -69,14 +70,35 @@ xMasterImportE :: String -> XPrvKey
 xMasterImportE = fromMaybe (error "failed to derived private root key from seed") . makeXPrvKey
                . hexToBS' "seed"
 
-derivePath :: String -> XPrvKey -> XPrvKey
-derivePath []       = id
-derivePath ('/':xs) = goIndex $ span isDigit xs
+xPrvExportC :: Char -> XPrvKey -> String
+xPrvExportC 'A' = addrToBase58 . xPubAddr . deriveXPubKey
+xPrvExportC 'M' = xPubExport . deriveXPubKey
+xPrvExportC 'm' = xPrvExport
+xPrvExportC  c  = error $ "Root path expected to be either m/ or M/ not " ++ c : "/"
+
+xPubExportC :: Char -> XPubKey -> String
+xPubExportC 'A' = addrToBase58 . xPubAddr
+xPubExportC 'M' = xPubExport
+xPubExportC 'm' = error "Private keys can not be derived from public keys (expected M/ not m/)"
+xPubExportC  c  = error $ "Root path expected to be M/ not " ++ c : "/"
+
+derivePrvPath :: String -> XPrvKey -> XPrvKey
+derivePrvPath []       = id
+derivePrvPath ('/':xs) = goIndex $ span isDigit xs
   where
-  goIndex ([], _)       = error "empty path segment"
-  goIndex (ys, '\'':zs) = derivePath zs . flip primeSubKeyE (read ys)
-  goIndex (ys, zs)      = derivePath zs . flip prvSubKeyE   (read ys)
-derivePath _ = error "malformed path"
+  goIndex ([], _)       = error "derivePrvPath: empty path segment"
+  goIndex (ys, '\'':zs) = derivePrvPath zs . flip primeSubKeyE (read ys)
+  goIndex (ys, zs)      = derivePrvPath zs . flip prvSubKeyE   (read ys)
+derivePrvPath _ = error "malformed path"
+
+derivePubPath :: String -> XPubKey -> XPubKey
+derivePubPath []       = id
+derivePubPath ('/':xs) = goIndex $ span isDigit xs
+  where
+  goIndex ([], _)     = error "derivePubPath: empty path segment"
+  goIndex (_, '\'':_) = error "derivePubPath: hardened subkeys are inaccessible from extended public keys"
+  goIndex (ys, zs)    = derivePubPath zs . flip pubSubKeyE (read ys)
+derivePubPath _ = error "malformed path"
 
 fromWIFE :: String -> PrvKey
 fromWIFE = fromMaybe (error "invalid WIF private key") . fromWIF
@@ -154,11 +176,11 @@ hx_hd_pub Nothing  = xPubExport . deriveXPubKey     . xPrvImportE
 hx_hd_pub (Just i) = xPubExport . flip pubSubKeyE i . xPubImportE
 
 hx_hd_path :: String -> String -> String
-hx_hd_path (m:path) = f m . derivePath path . xMasterImportE
-  where f 'M' = xPubExport . deriveXPubKey
-        f 'm' = xPrvExport
-        f  c  = error $ "Root path expected to be either 'm' or 'M' not '" ++ c : "'"
-hx_hd_path path = error $ "Invalid path: " ++ show path
+hx_hd_path []    _ = error "Empty path"
+hx_hd_path (m:p) i
+  | "xpub" `isPrefixOf` i = xPubExportC m . derivePubPath p $ xPubImportE    i
+  | "xprv" `isPrefixOf` i = xPrvExportC m . derivePrvPath p $ xPrvImportE    i
+  | otherwise             = xPrvExportC m . derivePrvPath p $ xMasterImportE i
 
 hx_bip39_mnemonic = either error id . toMnemonic . hexToBS' "seed"
 
