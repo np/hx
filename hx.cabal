@@ -15,7 +15,7 @@ cabal-version:       >=1.10
 executable hx
   main-is:             hx.hs
   ghc-options:         -Wall
-  build-depends:       base >=4.6, haskoin, bytestring,
+  build-depends:       base >=4.6, haskoin, bytestring, base16-bytestring,
                        scientific, binary, RFC1751 >= 0.2
   default-language:    Haskell2010
   -- other-modules:       

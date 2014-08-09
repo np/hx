@@ -1,17 +1,22 @@
+{-# LANGUAGE OverloadedStrings, TypeSynonymInstances, FlexibleInstances #-}
+import qualified Prelude as Prelude
+import Prelude hiding (interact, filter)
 import Data.Maybe
 import Data.Either (partitionEithers)
 import Data.Word
+import Data.String
+import Data.Monoid
 import Data.Scientific
 import Data.Binary
 import Data.Functor ((<$>))
-import Data.Char (isDigit)
+import Data.Char (isDigit,isSpace)
 import Data.List (isPrefixOf)
 import qualified Data.RFC1751 as RFC1751
 import System.Environment
 import Control.Monad (unless)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
-import qualified Data.ByteString.Builder as BSB
+import qualified Data.ByteString.Base16 as B16
 
 import Network.Haskoin.Crypto
 import Network.Haskoin.Internals (FieldP, FieldN, BigWord(BigWord), Point
@@ -25,24 +30,61 @@ import Network.Haskoin.Internals (FieldP, FieldN, BigWord(BigWord), Point
                                  )
 import Network.Haskoin.Util
 
+type BS = BS.ByteString
+
+class Hex s where
+  -- | Decode a base16 (HEX) representation to a bytestring
+  decodeHex :: String -> s -> BS
+
+  -- | Encode a bytestring to a base16 (HEX) representation
+  encodeHex :: BS -> s
+
+instance Hex String where
+  decodeHex msg = decodeHex msg . B8.pack
+  encodeHex     = B8.unpack . encodeHex
+
+instance Hex BS where
+  encodeHex    = B16.encode
+  decodeHex msg s
+    | BS.null rest = s'
+    | otherwise    = error $ msg ++ ": invalid hex encoding"
+    where (s',rest) = B16.decode s
+
+class Filter s where
+  filter :: (Char -> Bool) -> s -> s
+
+instance Filter String where
+  filter = Prelude.filter
+
+instance Filter BS where
+  filter = B8.filter
+
+class Interact s where
+  interact :: (s -> s) -> IO ()
+
+instance Interact String where
+  interact = Prelude.interact
+
+instance Interact BS.ByteString where
+  interact = BS.interact
+
+putLn :: (IsString s, Monoid s) => s -> s
+putLn = (<> "\n")
+
+ignoreSpaces :: Filter s => s -> s
+ignoreSpaces  = filter $ not . isSpace
+
+interactOneWord :: (IsString s, Monoid s, Filter s, Interact s) => (s -> s) -> IO ()
+interactOneWord f = interact $ putLn . f . ignoreSpaces
+
+putHex :: (Hex s, Binary a) => a -> s
+putHex = encodeHex . encode'
+
+getHex :: (Hex s, Binary a) => String -> s -> a
+getHex msg = runGet' get . decodeHex msg
+
 readTxFile :: FilePath -> IO Tx
-readTxFile file = getHex "transaction" . getOneWord <$> readFile file
-
-interactLines :: (String -> String) -> IO ()
-interactLines f = interact $ unlines . map f . lines
-
-interactWords :: (String -> String) -> IO ()
-interactWords f = interactLines $ unwords . map f . words
-
-interactOneWord :: (String -> String) -> IO ()
-interactOneWord f = interact $ unlines . return . f . getOneWord
-
-getOneWord :: String -> String
-getOneWord = oneWord . map words . lines
-  where oneWord [[x]] = x
-        oneWord []    = error "too few lines/words"
-        oneWord [_]   = error "only one word expected on the line"
-        oneWord _     = error "only one line expected"
+readTxFile file = getHex "transaction" . ignoreSpaces <$> BS.readFile file
 
 one_btc_in_satoshi :: Num a => a
 one_btc_in_satoshi = 10^(8 :: Int)
@@ -54,11 +96,8 @@ getFieldN = do
   unless (i < curveN) (fail $ "Get: Integer not in FieldN: " ++ show i)
   return $ fromInteger i
 
-hexToBS' :: String -> String -> BS.ByteString
-hexToBS' msg = fromMaybe (error $ msg ++ ": invalid hex encoding") . hexToBS
-
-decodeBase58S :: String -> BS.ByteString
-decodeBase58S = fromMaybe (error "invalid base58 encoding") . decodeBase58 . B8.pack
+decodeBase58E :: BS -> BS
+decodeBase58E = fromMaybe (error "invalid base58 encoding") . decodeBase58
 
 xPrvImportE :: String -> XPrvKey
 xPrvImportE = fromMaybe (error "invalid extended private key") . xPrvImport
@@ -66,9 +105,9 @@ xPrvImportE = fromMaybe (error "invalid extended private key") . xPrvImport
 xPubImportE :: String -> XPubKey
 xPubImportE = fromMaybe (error "invalid extended public key") . xPubImport
 
-xMasterImportE :: String -> XPrvKey
+xMasterImportE :: Hex s => s -> XPrvKey
 xMasterImportE = fromMaybe (error "failed to derived private root key from seed") . makeXPrvKey
-               . hexToBS' "seed"
+               . decodeHex "seed"
 
 xPrvExportC :: Char -> XPrvKey -> String
 xPrvExportC 'A' = addrToBase58 . xPubAddr . deriveXPubKey
@@ -133,38 +172,38 @@ mktx_args ("--output":output:args) = Right (readOutput output) : mktx_args args
 mktx_args (      "-o":output:args) = Right (readOutput output) : mktx_args args
 mktx_args _ = error "mktx_args: unexpected argument"
 
-putTxSig :: TxSignature -> String
-putTxSig = bsToHex . encodeSig
+putTxSig :: Hex s => TxSignature -> s
+putTxSig = encodeHex . encodeSig
 
-getTxSig :: String -> TxSignature
-getTxSig = either error id . decodeSig . hexToBS' "transaction signature"
+getTxSig :: Hex s => s -> TxSignature
+getTxSig = either error id . decodeSig . decodeHex "transaction signature"
 
-hx_mktx :: [String] -> String
+hx_mktx :: Hex s => [String] -> s
 hx_mktx args = putHex . either error id . uncurry buildAddrTx
              . partitionEithers $ mktx_args args
 
-hx_pubkey, hx_addr, hx_wif_to_secret, hx_secret_to_wif,
-  hx_hd_to_wif, hx_hd_to_address, hx_hd_to_pubkey, hx_btc, hx_satoshi,
-  hx_bip39_hex, hx_bip39_mnemonic,
-  hx_base58_encode, hx_base58_decode, hx_base58check_encode, hx_base58check_decode,
-  hx_decode_addr, hx_rfc1751_key, hx_rfc1751_mnemonic
-  :: String -> String
-
+hx_pubkey :: Hex s => String -> s
 hx_pubkey = putHex . derivePubKey . fromWIFE
 
-hx_addr = addrToBase58 . pubKeyAddr . decode' . hexToBS' "address"
+hx_addr :: Hex s => s -> String
+hx_addr = addrToBase58 . pubKeyAddr . decode' . decodeHex "address"
 
-hx_wif_to_secret = bsToHex . runPut' . putPrvKey . fromWIFE
+hx_wif_to_secret :: Hex s => String -> s
+hx_wif_to_secret = encodeHex . runPut' . putPrvKey . fromWIFE
 
+hx_secret_to_wif :: String -> String
 hx_secret_to_wif = toWIF
                  . fromMaybe (error "invalid private key") . makePrvKey
-                 . bsToInteger . hexToBS' "private key"
+                 . bsToInteger . decodeHex "private key"
 
+hx_hd_to_wif :: String -> String
 hx_hd_to_wif = xPrvWIF . xPrvImportE
 
 -- TODO support private keys as well
+hx_hd_to_address :: String -> String
 hx_hd_to_address = addrToBase58 . xPubAddr . xPubImportE
 
+hx_hd_to_pubkey :: Hex s => String -> s
 hx_hd_to_pubkey = putHex . xPubKey . xPubImportE
 
 hx_hd_priv :: Maybe (XPrvKey -> Word32 -> XPrvKey, Word32) -> String -> String
@@ -182,42 +221,54 @@ hx_hd_path (m:p) i
   | "xprv" `isPrefixOf` i = xPrvExportC m . derivePrvPath p $ xPrvImportE    i
   | otherwise             = xPrvExportC m . derivePrvPath p $ xMasterImportE i
 
-hx_bip39_mnemonic = either error id . toMnemonic . hexToBS' "seed"
+hx_bip39_mnemonic :: Hex s => s -> String
+hx_bip39_mnemonic = either error id . toMnemonic . decodeHex "seed"
 
-hx_bip39_hex = (++"\n") . bsToHex . either error id . fromMnemonic
+hx_bip39_hex :: String -> String
+hx_bip39_hex = putLn . bsToHex . either error id . fromMnemonic
 
 hx_bip39_seed :: Passphrase -> Mnemonic -> String
-hx_bip39_seed pf = (++"\n") . bsToHex . either error id . mnemonicToSeed pf
+hx_bip39_seed pf = putLn . bsToHex . either error id . mnemonicToSeed pf
 
+hx_btc, hx_satoshi :: String -> String
 hx_btc     = formatScientific Fixed (Just 8) . (/ one_btc_in_satoshi) . read
 hx_satoshi = formatScientific Fixed (Just 0) . (* one_btc_in_satoshi) . read
 
+hx_decode_addr :: String -> String
 hx_decode_addr = bsToHex . encode' . getAddrHash . base58ToAddrE
 
-hx_encode_addr :: (Word160 -> Address) -> String -> String
+hx_encode_addr :: Hex s => (Word160 -> Address) -> s -> String
 hx_encode_addr f = addrToBase58 . f . getHex "address"
 
-hx_base58_encode = B8.unpack . encodeBase58 . hexToBS' "input"
+hx_base58_encode :: Hex s => s -> BS
+hx_base58_encode = encodeBase58 . decodeHex "input"
 
-hx_base58_decode = bsToHex . decodeBase58S
+hx_base58_decode :: Hex s => BS -> s
+hx_base58_decode = encodeHex . decodeBase58E
 
-hx_base58check_encode = B8.unpack . encodeBase58Check . hexToBS' "input"
+hx_base58check_encode :: Hex s => s -> BS
+hx_base58check_encode = encodeBase58Check . decodeHex "input"
 
-hx_base58check_decode = bsToHex
+hx_base58check_decode :: Hex s => BS -> s
+hx_base58check_decode = encodeHex
                       . fromMaybe (error "invalid base58check encoding")
-                      . decodeBase58Check . B8.pack
+                      . decodeBase58Check
 
-hx_rfc1751_key      = (++"\n") . bsToHex . toStrictBS
+hx_rfc1751_key      :: (Monoid s, IsString s, Hex s) => BS -> s
+hx_rfc1751_key      = putLn . encodeHex . toStrictBS
                     . fromMaybe (error "invalid RFC1751 mnemonic") . RFC1751.mnemonicToKey
+                    . B8.unpack
 
-hx_rfc1751_mnemonic = fromMaybe (error "invalid RFC1751 128 bits key") . RFC1751.keyToMnemonic
-                    . toLazyBS . hexToBS' "128 bits key"
+hx_rfc1751_mnemonic :: Hex s => s -> BS
+hx_rfc1751_mnemonic = B8.pack
+                    . fromMaybe (error "invalid RFC1751 128 bits key") . RFC1751.keyToMnemonic
+                    . toLazyBS . decodeHex "128 bits key"
 
 -- set-input FILENAME N SIGNATURE_AND_PUBKEY_SCRIPT
 hx_set_input :: FilePath -> String -> String -> IO ()
 hx_set_input file index script =
   do tx <- readTxFile file
-     putStrLn . putHex $ hx_set_input' (read index) (hexToBS' "script" script) tx
+     B8.putStrLn . putHex $ hx_set_input' (read index) (decodeHex "script" script) tx
 
 hx_set_input' :: Int -> BS.ByteString -> Tx -> Tx
 hx_set_input' i si tx = tx{ txIn = updateIndex i (txIn tx) f }
@@ -234,7 +285,8 @@ hx_validsig file i s sig =
      interactOneWord $ putSuccess
                      . hx_validsig' tx (read i) (getHex "script" s) (getTxSig sig)
                      . getHex "public key"
-  where putSuccess True = "Status: OK"
+  where putSuccess :: Bool -> BS
+        putSuccess True = "Status: OK"
         putSuccess  _   = "Status: Failed"
 
 hx_sign_input :: FilePath -> String -> String -> IO ()
@@ -253,78 +305,68 @@ hx_sign_input' tx index script_output privkey = sig where
 parseWord32 :: String -> Word32
 parseWord32 = read
 
--- | Encode a bytestring to a base16 (HEX) representation
-bsToHex' :: BS.ByteString -> BS.ByteString
-bsToHex' = toStrictBS . BSB.toLazyByteString . BSB.byteStringHex
+getHexN :: Hex s => s -> FieldN
+getHexN = runGet' getFieldN . decodeHex "field number modulo N"
 
-putHex :: Binary a => a -> String
-putHex = bsToHex . encode'
-
-getHexN :: String -> FieldN
-getHexN = runGet' getFieldN . hexToBS' "field number modulo N"
-
-getHexP :: String -> FieldP
+getHexP :: Hex s => s -> FieldP
 getHexP = getHex "field number modulo P"
 
-getHex :: Binary a => String -> String -> a
-getHex msg = runGet' get . hexToBS' msg
-
 -- Little endian version of getHex
-getHexLE :: Binary a => String -> String -> a
-getHexLE msg = runGet' get . BS.reverse . hexToBS' (msg ++ " (little endian)")
+getHexLE :: (Binary a, Hex s) => String -> s -> a
+getHexLE msg = runGet' get . BS.reverse . decodeHex (msg ++ " (little endian)")
 
-getPoint :: String -> Point
+getPoint :: Hex s => s -> Point
 getPoint = pubKeyPoint . getHex "curve point"
 
-putPoint :: Point -> String
+putPoint :: Hex s => Point -> s
 putPoint = putHex . PubKey
 
 mainArgs :: [String] -> IO ()
-mainArgs ["pubkey"]                  = interactWords hx_pubkey
-mainArgs ["addr"]                    = interactWords hx_addr
-mainArgs ["wif-to-secret"]           = interactWords hx_wif_to_secret
-mainArgs ["secret-to-wif"]           = interactWords hx_secret_to_wif
-mainArgs ["hd-priv"]                 = interactWords $ hx_hd_priv   Nothing
-mainArgs ["hd-priv", i]              = interactWords . hx_hd_priv $ Just (prvSubKeyE,   parseWord32 i)
-mainArgs ["hd-priv", "--hard", i]    = interactWords . hx_hd_priv $ Just (primeSubKeyE, parseWord32 i)
-mainArgs ["hd-pub"]                  = interactWords $ hx_hd_pub    Nothing
-mainArgs ["hd-pub", i]               = interactWords . hx_hd_pub  . Just $ parseWord32 i
-mainArgs ["hd-path", p]              = interactWords $ hx_hd_path p
-mainArgs ["hd-to-wif"]               = interactWords hx_hd_to_wif
-mainArgs ["hd-to-pubkey"]            = interactWords hx_hd_to_pubkey
-mainArgs ["hd-to-address"]           = interactWords hx_hd_to_address
-mainArgs ["bip39-mnemonic"]          = interactWords hx_bip39_mnemonic
+mainArgs ["pubkey"]                  = interactOneWord hx_pubkey
+mainArgs ["addr"]                    = interactOneWord hx_addr
+mainArgs ["wif-to-secret"]           = interactOneWord hx_wif_to_secret
+mainArgs ["secret-to-wif"]           = interactOneWord hx_secret_to_wif
+mainArgs ["hd-priv"]                 = interactOneWord $ hx_hd_priv   Nothing
+mainArgs ["hd-priv", i]              = interactOneWord . hx_hd_priv $ Just (prvSubKeyE,   parseWord32 i)
+mainArgs ["hd-priv", "--hard", i]    = interactOneWord . hx_hd_priv $ Just (primeSubKeyE, parseWord32 i)
+mainArgs ["hd-pub"]                  = interactOneWord $ hx_hd_pub    Nothing
+mainArgs ["hd-pub", i]               = interactOneWord . hx_hd_pub  . Just $ parseWord32 i
+mainArgs ["hd-path", p]              = interactOneWord $ hx_hd_path p
+mainArgs ["hd-to-wif"]               = interactOneWord hx_hd_to_wif
+mainArgs ["hd-to-pubkey"]            = interactOneWord hx_hd_to_pubkey
+mainArgs ["hd-to-address"]           = interactOneWord hx_hd_to_address
+mainArgs ["bip39-mnemonic"]          = interactOneWord hx_bip39_mnemonic
 mainArgs ["bip39-hex"]               = interact hx_bip39_hex
 mainArgs ["bip39-seed", pass]        = interact $ hx_bip39_seed pass
-mainArgs ["base58-encode"]           = interactWords hx_base58_encode
-mainArgs ["base58-decode"]           = interactWords hx_base58_decode
-mainArgs ["base58check-encode"]      = interactWords hx_base58check_encode
-mainArgs ["base58check-decode"]      = interactWords hx_base58check_decode
-mainArgs ["encode-addr", "--script"] = interactWords $ hx_encode_addr ScriptAddress
-mainArgs ["encode-addr"]             = interactWords $ hx_encode_addr PubKeyAddress
-mainArgs ["decode-addr"]             = interactWords hx_decode_addr
-mainArgs ["ripemd-hash"]             = BS.interact $ bsToHex' . hash160BS
-mainArgs ["sha256"]                  = BS.interact $ bsToHex' . hash256BS
-mainArgs ["ec-double", p]            = putStrLn . putPoint . doublePoint $ getPoint p
-mainArgs ["ec-add", p, q]            = putStrLn . putPoint $ addPoint (getPoint p) (getPoint q)
-mainArgs ["ec-multiply", x, p]       = putStrLn . putPoint $ mulPoint (getHexN x) (getPoint p)
-mainArgs ["ec-tweak-add", x, p]      = putStrLn . putPoint $ addPoint (mulPoint (getHexN x) curveG) (getPoint p)
-mainArgs ["ec-add-modp", x, y]       = putStrLn $ putHex (getHexP x + getHexP y)
-mainArgs ["ec-add-modn", x, y]       = putStrLn $ putHex (getHexN x + getHexN y :: FieldN)
-mainArgs ["ec-g"]                    = putStrLn $ putPoint curveG
-mainArgs ["ec-p"]                    = putStrLn $ putHex (BigWord curveP   :: Word256)
-mainArgs ["ec-n"]                    = putStrLn $ putHex (BigWord curveN   :: Word256)
-mainArgs ["ec-a"]                    = putStrLn $ putHex (BigWord integerA :: Word256)
-mainArgs ["ec-b"]                    = putStrLn $ putHex (BigWord integerB :: Word256)
-mainArgs ["ec-int-modp", x]          = putStrLn $ putHex (BigWord (read x) :: FieldP)
-mainArgs ["ec-int-modn", x]          = putStrLn $ putHex (BigWord (read x) :: FieldN)
-mainArgs ["ec-x", p]                 = putStrLn . putHex . fromMaybe (error "invalid point") . getX $ getPoint p
-mainArgs ["ec-y", p]                 = putStrLn . putHex . fromMaybe (error "invalid point") . getY $ getPoint p
+mainArgs ["base58-encode"]           = interactOneWord hx_base58_encode
+mainArgs ["base58-decode"]           = interactOneWord hx_base58_decode
+mainArgs ["base58check-encode"]      = interactOneWord hx_base58check_encode
+mainArgs ["base58check-decode"]      = interactOneWord hx_base58check_decode
+mainArgs ["encode-addr", "--script"] = interactOneWord $ hx_encode_addr ScriptAddress
+mainArgs ["encode-addr"]             = interactOneWord $ hx_encode_addr PubKeyAddress
+mainArgs ["decode-addr"]             = interactOneWord hx_decode_addr
+mainArgs ["ripemd-hash"]             = BS.interact $ encodeHex . hash160BS
+mainArgs ["sha256"]                  = BS.interact $ encodeHex . hash256BS
+mainArgs ["ec-double", p]            = B8.putStrLn . putPoint . doublePoint $ getPoint p
+mainArgs ["ec-add", p, q]            = B8.putStrLn . putPoint $ addPoint (getPoint p) (getPoint q)
+mainArgs ["ec-multiply", x, p]       = B8.putStrLn . putPoint $ mulPoint (getHexN x) (getPoint p)
+mainArgs ["ec-tweak-add", x, p]      = B8.putStrLn . putPoint $ addPoint (mulPoint (getHexN x) curveG) (getPoint p)
+mainArgs ["ec-add-modp", x, y]       = B8.putStrLn $ putHex (getHexP x + getHexP y)
+mainArgs ["ec-add-modn", x, y]       = B8.putStrLn $ putHex (getHexN x + getHexN y :: FieldN)
+mainArgs ["ec-g"]                    = B8.putStrLn $ putPoint curveG
+mainArgs ["ec-p"]                    = B8.putStrLn $ putHex (BigWord curveP   :: Word256)
+mainArgs ["ec-n"]                    = B8.putStrLn $ putHex (BigWord curveN   :: Word256)
+mainArgs ["ec-a"]                    = B8.putStrLn $ putHex (BigWord integerA :: Word256)
+mainArgs ["ec-b"]                    = B8.putStrLn $ putHex (BigWord integerB :: Word256)
+mainArgs ["ec-int-modp", x]          = B8.putStrLn $ putHex (BigWord (read x) :: FieldP)
+mainArgs ["ec-int-modn", x]          = B8.putStrLn $ putHex (BigWord (read x) :: FieldN)
+mainArgs ["ec-x", p]                 = B8.putStrLn . putHex . fromMaybe (error "invalid point") . getX $ getPoint p
+mainArgs ["ec-y", p]                 = B8.putStrLn . putHex . fromMaybe (error "invalid point") . getY $ getPoint p
 mainArgs ["btc", x]                  = putStrLn $ hx_btc x
 mainArgs ["satoshi", x]              = putStrLn $ hx_satoshi x
 mainArgs ["rfc1751-key"]             = interact hx_rfc1751_key
 mainArgs ["rfc1751-mnemonic"]        = interactOneWord hx_rfc1751_mnemonic
-mainArgs ("mktx":file:args)          = writeFile file $ hx_mktx args
+mainArgs ("mktx":file:args)          = BS.writeFile file $ hx_mktx args
 mainArgs ["sign-input",f,i,s]        = hx_sign_input f i s
 mainArgs ["set-input",f,i,s]         = hx_set_input f i s
 mainArgs ["validsig",f,i,s,sig]      = hx_validsig f i s sig
