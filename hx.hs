@@ -83,6 +83,10 @@ putHex = encodeHex . encode'
 getHex :: (Hex s, Binary a) => String -> s -> a
 getHex msg = runGet' get . decodeHex msg
 
+interactHex :: (BS -> BS) -> IO ()
+interactHex f = BS.interact $ putLn . encodeHex . f
+                            . decodeHex "input" . ignoreSpaces
+
 readTxFile :: FilePath -> IO Tx
 readTxFile file = getHex "transaction" . ignoreSpaces <$> BS.readFile file
 
@@ -345,8 +349,8 @@ mainArgs ["base58check-decode"]      = interactOneWord hx_base58check_decode
 mainArgs ["encode-addr", "--script"] = interactOneWord $ hx_encode_addr ScriptAddress
 mainArgs ["encode-addr"]             = interactOneWord $ hx_encode_addr PubKeyAddress
 mainArgs ["decode-addr"]             = interactOneWord hx_decode_addr
-mainArgs ["ripemd-hash"]             = BS.interact $ encodeHex . hash160BS
-mainArgs ["sha256"]                  = BS.interact $ encodeHex . hash256BS
+mainArgs ["ripemd-hash"]             = interact $ encodeHex . hash160BS . hash256BS
+mainArgs ["sha256"]                  = interactHex hash256BS
 mainArgs ["ec-double", p]            = B8.putStrLn . putPoint . doublePoint $ getPoint p
 mainArgs ["ec-add", p, q]            = B8.putStrLn . putPoint $ addPoint (getPoint p) (getPoint q)
 mainArgs ["ec-multiply", x, p]       = B8.putStrLn . putPoint $ mulPoint (getHexN x) (getPoint p)
@@ -417,11 +421,10 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx bip39-seed <PASSPHRASE>                [0]"
                              ,"hx rfc1751-key                            [0]"
                              ,"hx rfc1751-mnemonic                       [0]"
-                             ,"hx ripemd-hash                            [1]"
-                             ,"hx sha256                                 [1]"
+                             ,"hx ripemd-hash"
+                             ,"hx sha256"
                              ,""
                              ,"[0]: Not available in sx"
-                             ,"[1]: The output is consistent with openssl but NOT with sx"
                              ,""
                              ,"PATH ::= ('M' | 'm') <PATH-CONT>"
                              ,"PATH-CONT ::= {- empty -}"

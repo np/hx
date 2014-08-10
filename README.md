@@ -49,11 +49,11 @@ Supported commands:
     hx bip39-seed <PASSPHRASE>                [0]
     hx rfc1751-key                            [0]
     hx rfc1751-mnemonic                       [0]
-    hx ripemd-hash                            [1]
-    hx sha256                                 [1]
+    hx ripemd-hash
+    hx sha256
 
     [0]: Not available in sx
-    [1]: The output is consistent with openssl but NOT with sx
+
     PATH ::= ('M' | 'm') <PATH-CONT>
     PATH-CONT ::= {- empty -}
                 | '/' <INDEX> <PATH-CONT>
