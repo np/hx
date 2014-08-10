@@ -349,6 +349,8 @@ mainArgs ["base58check-decode"]      = interactOneWord hx_base58check_decode
 mainArgs ["encode-addr", "--script"] = interactOneWord $ hx_encode_addr ScriptAddress
 mainArgs ["encode-addr"]             = interactOneWord $ hx_encode_addr PubKeyAddress
 mainArgs ["decode-addr"]             = interactOneWord hx_decode_addr
+mainArgs ["encode-hex"]              = interact encodeHex
+mainArgs ["decode-hex"]              = interact $ decodeHex "input" . ignoreSpaces
 mainArgs ["ripemd-hash"]             = interact $ encodeHex . hash160BS . hash256BS
 mainArgs ["sha256"]                  = interactHex hash256BS
 mainArgs ["ec-double", p]            = B8.putStrLn . putPoint . doublePoint $ getPoint p
@@ -421,6 +423,8 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx bip39-seed <PASSPHRASE>                [0]"
                              ,"hx rfc1751-key                            [0]"
                              ,"hx rfc1751-mnemonic                       [0]"
+                             ,"hx encode-hex                             [0]"
+                             ,"hx decode-hex                             [0]"
                              ,"hx ripemd-hash"
                              ,"hx sha256"
                              ,""
