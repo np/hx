@@ -21,6 +21,7 @@ import Network.Haskoin.Internals (FieldP, FieldN, BigWord(BigWord), Point
                                  , txIn, scriptInput
                                  , buildAddrTx, txSigHash, encodeSig, decodeSig
                                  , getOutputAddress, decodeOutput
+                                 , fromMnemonic
                                  )
 import Network.Haskoin.Util
 
