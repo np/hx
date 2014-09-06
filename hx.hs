@@ -27,6 +27,7 @@ import Network.Haskoin.Internals (FieldP, FieldN, BigWord(BigWord), Point
                                  , txIn, scriptInput
                                  , buildAddrTx, txSigHash, encodeSig, decodeSig
                                  , getOutputAddress, decodeOutput
+                                 , fromMnemonic
                                  )
 import Network.Haskoin.Util
 
@@ -259,14 +260,14 @@ hx_base58check_decode = encodeHex
                       . decodeBase58Check
 
 hx_rfc1751_key      :: (Monoid s, IsString s, Hex s) => BS -> s
-hx_rfc1751_key      = putLn . encodeHex . toStrictBS
+hx_rfc1751_key      = putLn . encodeHex
                     . fromMaybe (error "invalid RFC1751 mnemonic") . RFC1751.mnemonicToKey
                     . B8.unpack
 
 hx_rfc1751_mnemonic :: Hex s => s -> BS
 hx_rfc1751_mnemonic = B8.pack
                     . fromMaybe (error "invalid RFC1751 128 bits key") . RFC1751.keyToMnemonic
-                    . toLazyBS . decodeHex "128 bits key"
+                    . decodeHex "128 bits key"
 
 -- set-input FILENAME N SIGNATURE_AND_PUBKEY_SCRIPT
 hx_set_input :: FilePath -> String -> String -> IO ()
