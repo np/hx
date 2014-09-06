@@ -185,11 +185,11 @@ hx_base58check_decode = bsToHex
                       . fromMaybe (error "invalid base58check encoding")
                       . decodeBase58Check . B8.pack
 
-hx_rfc1751_key      = (++"\n") . bsToHex . toStrictBS
+hx_rfc1751_key      = (++"\n") . bsToHex
                     . fromMaybe (error "invalid RFC1751 mnemonic") . RFC1751.mnemonicToKey
 
 hx_rfc1751_mnemonic = fromMaybe (error "invalid RFC1751 128 bits key") . RFC1751.keyToMnemonic
-                    . toLazyBS . hexToBS' "128 bits key"
+                    . hexToBS' "128 bits key"
 
 -- set-input FILENAME N SIGNATURE_AND_PUBKEY_SCRIPT
 hx_set_input :: FilePath -> String -> String -> IO ()
