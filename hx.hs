@@ -204,15 +204,38 @@ getTxSig = either error id . decodeSig . decodeHex "transaction signature"
 getPubKey :: Hex s => s -> PubKey
 getPubKey = getHex "public key"
 
-onKey :: (PrvKey -> PrvKey) -> (PubKey -> PubKey) -> String -> String
-onKey onPrv onPub s@('0':_) = putHex . onPub . getPubKey $ s
-onKey onPrv onPub s         = toWIF  . onPrv . fromWIFE  $ s
+data Key = Prv PrvKey | Pub PubKey
+  deriving (Eq, Show, Read)
+
+onKey :: (PrvKey -> a) -> (PubKey -> a) -> Key -> a
+onKey onPrv _     (Prv k) = onPrv k
+onKey _     onPub (Pub k) = onPub k
+
+getKey :: String -> Key
+getKey s | ('0':_) <- s = Pub $ getPubKey s
+         | otherwise    = Prv $ fromWIFE  s
+
+putKey :: Key -> String
+putKey = onKey toWIF putHex
+
+mapKey :: (PrvKey -> PrvKey) -> (PubKey -> PubKey) -> Key -> Key
+mapKey onPrv onPub = onKey (Prv . onPrv) (Pub . onPub)
+
+pubKey :: Key -> PubKey
+pubKey (Prv k) = derivePubKey k
+pubKey (Pub k) = k
+
+keyAddr :: Key -> Address
+keyAddr = pubKeyAddr . pubKey
+
+keyAddrBase58 :: Key -> String
+keyAddrBase58 = addrToBase58 . keyAddr
 
 hx_compress :: String -> String
-hx_compress = onKey compress compress
+hx_compress = putKey . mapKey compress compress . getKey
 
 hx_uncompress :: String -> String
-hx_uncompress = onKey uncompress uncompress
+hx_uncompress = putKey . mapKey uncompress uncompress . getKey
 
 hx_mktx :: Hex s => [String] -> s
 hx_mktx args = putHex . either error id . uncurry buildAddrTx
@@ -221,8 +244,8 @@ hx_mktx args = putHex . either error id . uncurry buildAddrTx
 hx_pubkey :: Hex s => String -> s
 hx_pubkey = putHex . derivePubKey . fromWIFE
 
-hx_addr :: Hex s => s -> String
-hx_addr = addrToBase58 . pubKeyAddr . getPubKey
+hx_addr :: String -> String
+hx_addr = keyAddrBase58 . getKey
 
 hx_wif_to_secret :: Hex s => String -> s
 hx_wif_to_secret = encodeHex . runPut' . putPrvKey . fromWIFE
