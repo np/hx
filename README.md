@@ -58,7 +58,14 @@ Supported commands:
 
     [0]: Not available in sx
 
-    PATH ::= ('M' | 'm') <PATH-CONT>
-    PATH-CONT ::= {- empty -}
-                | '/' <INDEX> <PATH-CONT>
-                | '/' <INDEX> '\'' <PATH-CONT>
+    PATH      ::= <PATH-HEAD> <PATH-CONT>
+    PATH-HEAD ::= 'A'   [address (compressed)]
+                | 'M'   [extended public  key]
+                | 'm'   [extended private key]
+                | 'P'   [public  key (compressed)]
+                | 'p'   [private key (compressed)]
+                | 'U'   [uncompressed public  key]
+                | 'u'   [uncompressed private key]
+    PATH-CONT ::=                               [empty]
+                | '/' <INDEX> <PATH-CONT>       [child key]
+                | '/' <INDEX> '\'' <PATH-CONT>  [hardened child key]

@@ -134,15 +134,23 @@ xMasterImportE = fromMaybe (error "failed to derived private root key from seed"
 
 xPrvExportC :: Char -> XPrvKey -> String
 xPrvExportC 'A' = addrToBase58 . xPubAddr . deriveXPubKey
+xPrvExportC 'P' = putHex . xPubKey . deriveXPubKey
+xPrvExportC 'p' = xPrvWIF
+xPrvExportC 'U' = putHex . uncompress . xPubKey . deriveXPubKey
+xPrvExportC 'u' = toWIF . uncompress . xPrvKey
 xPrvExportC 'M' = xPubExport . deriveXPubKey
 xPrvExportC 'm' = xPrvExport
-xPrvExportC  c  = error $ "Root path expected to be either m/ or M/ not " ++ c : "/"
+xPrvExportC  c  = error $ "Root path expected to be m/, M/, A/, P/, p/, U/, or u/ not " ++ c : "/"
 
 xPubExportC :: Char -> XPubKey -> String
 xPubExportC 'A' = addrToBase58 . xPubAddr
+xPubExportC 'P' = putHex . xPubKey
+xPubExportC 'U' = putHex . uncompress . xPubKey
 xPubExportC 'M' = xPubExport
-xPubExportC 'm' = error "Private keys can not be derived from public keys (expected M/ not m/)"
-xPubExportC  c  = error $ "Root path expected to be M/ not " ++ c : "/"
+xPubExportC 'u' = error "Uncompressed private keys can not be derived from extended public keys (expected P/, U/ or M/ not u/)"
+xPubExportC 'p' = error "Private keys can not be derived from extended public keys (expected P/, U/ or M/ not p/)"
+xPubExportC 'm' = error "Extended private keys can not be derived from extended public keys (expected M/ not m/)"
+xPubExportC  c  = error $ "Root path expected to be M/, A/, or P/ not " ++ c : "/"
 
 derivePrvPath :: String -> XPrvKey -> XPrvKey
 derivePrvPath []       = id
@@ -436,6 +444,7 @@ mainArgs ["validsig",f,i,s,sig]      = hx_validsig f i s sig
 mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"Supported commands:"
+                             ,""
                              ,"hx pubkey"
                              ,"hx addr"
                              ,"hx wif-to-secret"
@@ -444,8 +453,8 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx uncompress                             [0]"
                              ,"hx mktx <TXFILE> --input <TXHASH>:<INDEX> ... --output <ADDR>:<AMOUNT>"
                              ,"hx sign-input <TXFILE> <INDEX> <SCRIPT_CODE>"
-                             ,"hx set-input <TXFILE> <INDEX> <SIGNATURE_AND_PUBKEY_SCRIPT>"
-                             ,"hx validsig <TXFILE> <INDEX> <SCRIPT_CODE> <SIGNATURE>"
+                             ,"hx set-input  <TXFILE> <INDEX> <SIGNATURE_AND_PUBKEY_SCRIPT>"
+                             ,"hx validsig   <TXFILE> <INDEX> <SCRIPT_CODE> <SIGNATURE>"
                              ,"hx hd-priv                                [0]"
                              ,"hx hd-priv <INDEX>"
                              ,"hx hd-priv --hard <INDEX>"
@@ -489,10 +498,17 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"[0]: Not available in sx"
                              ,""
-                             ,"PATH ::= ('M' | 'm') <PATH-CONT>"
-                             ,"PATH-CONT ::= {- empty -}"
-                             ,"            | '/' <INDEX> <PATH-CONT>"
-                             ,"            | '/' <INDEX> '\\'' <PATH-CONT>"
+                             ,"PATH      ::= <PATH-HEAD> <PATH-CONT>"
+                             ,"PATH-HEAD ::= 'A'   [address (compressed)]"
+                             ,"            | 'M'   [extended public  key]"
+                             ,"            | 'm'   [extended private key]"
+                             ,"            | 'P'   [public  key (compressed)]"
+                             ,"            | 'p'   [private key (compressed)]"
+                             ,"            | 'U'   [uncompressed public  key]"
+                             ,"            | 'u'   [uncompressed private key]"
+                             ,"PATH-CONT ::=                                [empty]"
+                             ,"            | '/' <INDEX> <PATH-CONT>        [child key]"
+                             ,"            | '/' <INDEX> '\\'' <PATH-CONT>  [hardened child key]"
                              ]
 
 main :: IO ()
