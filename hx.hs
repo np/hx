@@ -82,7 +82,7 @@ putHex :: (Hex s, Binary a) => a -> s
 putHex = encodeHex . encode'
 
 getHex :: (Hex s, Binary a) => String -> s -> a
-getHex msg = runGet' get . decodeHex msg
+getHex msg = decode' . decodeHex msg
 
 interactHex :: (BS -> BS) -> IO ()
 interactHex f = BS.interact $ putLn . encodeHex . f
@@ -183,6 +183,9 @@ putTxSig = encodeHex . encodeSig
 getTxSig :: Hex s => s -> TxSignature
 getTxSig = either error id . decodeSig . decodeHex "transaction signature"
 
+getPubKey :: Hex s => s -> PubKey
+getPubKey = getHex "public key"
+
 hx_mktx :: Hex s => [String] -> s
 hx_mktx args = putHex . either error id . uncurry buildAddrTx
              . partitionEithers $ mktx_args args
@@ -191,7 +194,7 @@ hx_pubkey :: Hex s => String -> s
 hx_pubkey = putHex . derivePubKey . fromWIFE
 
 hx_addr :: Hex s => s -> String
-hx_addr = addrToBase58 . pubKeyAddr . decode' . decodeHex "address"
+hx_addr = addrToBase58 . pubKeyAddr . getPubKey
 
 hx_wif_to_secret :: Hex s => String -> s
 hx_wif_to_secret = encodeHex . runPut' . putPrvKey . fromWIFE
@@ -289,7 +292,7 @@ hx_validsig file i s sig =
   do tx <- readTxFile file
      interactOneWord $ putSuccess
                      . hx_validsig' tx (read i) (getHex "script" s) (getTxSig sig)
-                     . getHex "public key"
+                     . getPubKey
   where putSuccess :: Bool -> BS
         putSuccess True = "Status: OK"
         putSuccess  _   = "Status: Failed"
@@ -318,7 +321,7 @@ getHexP = getHex "field number modulo P"
 
 -- Little endian version of getHex
 getHexLE :: (Binary a, Hex s) => String -> s -> a
-getHexLE msg = runGet' get . BS.reverse . decodeHex (msg ++ " (little endian)")
+getHexLE msg = decode' . BS.reverse . decodeHex (msg ++ " (little endian)")
 
 getPoint :: Hex s => s -> Point
 getPoint = pubKeyPoint . getHex "curve point"
