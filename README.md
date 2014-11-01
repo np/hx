@@ -9,8 +9,8 @@ Supported commands:
     hx addr
     hx wif-to-secret
     hx secret-to-wif
-    hx compress
-    hx uncompress
+    hx compress                               [0]
+    hx uncompress                             [0]
     hx mktx <TXFILE> --input <TXHASH>:<INDEX> ... --output <ADDR>:<AMOUNT>
     hx sign-input <TXFILE> <INDEX> <SCRIPT_CODE>
     hx set-input  <TXFILE> <INDEX> <SIGNATURE_AND_PUBKEY_SCRIPT>
