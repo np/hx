@@ -94,6 +94,24 @@ readTxFile file = getHex "transaction" . ignoreSpaces <$> BS.readFile file
 one_btc_in_satoshi :: Num a => a
 one_btc_in_satoshi = 10^(8 :: Int)
 
+class Compress a where
+  compress   :: a -> a
+  uncompress :: a -> a
+
+instance Compress PrvKey where
+  compress (PrvKeyU k)  = PrvKey k
+  compress k@PrvKey{} = k
+
+  uncompress (PrvKey k)  = PrvKeyU k
+  uncompress k@PrvKeyU{} = k
+
+instance Compress PubKey where
+  compress (PubKeyU k)  = PubKey k
+  compress k@PubKey{} = k
+
+  uncompress (PubKey k)  = PubKeyU k
+  uncompress k@PubKeyU{} = k
+
 -- Non DER
 getFieldN :: Get FieldN
 getFieldN = do
@@ -185,6 +203,16 @@ getTxSig = either error id . decodeSig . decodeHex "transaction signature"
 
 getPubKey :: Hex s => s -> PubKey
 getPubKey = getHex "public key"
+
+onKey :: (PrvKey -> PrvKey) -> (PubKey -> PubKey) -> String -> String
+onKey onPrv onPub s@('0':_) = putHex . onPub . getPubKey $ s
+onKey onPrv onPub s         = toWIF  . onPrv . fromWIFE  $ s
+
+hx_compress :: String -> String
+hx_compress = onKey compress compress
+
+hx_uncompress :: String -> String
+hx_uncompress = onKey uncompress uncompress
 
 hx_mktx :: Hex s => [String] -> s
 hx_mktx args = putHex . either error id . uncurry buildAddrTx
@@ -334,6 +362,8 @@ mainArgs ["pubkey"]                  = interactOneWord hx_pubkey
 mainArgs ["addr"]                    = interactOneWord hx_addr
 mainArgs ["wif-to-secret"]           = interactOneWord hx_wif_to_secret
 mainArgs ["secret-to-wif"]           = interactOneWord hx_secret_to_wif
+mainArgs ["compress"]                = interactOneWord hx_compress
+mainArgs ["uncompress"]              = interactOneWord hx_uncompress
 mainArgs ["hd-priv"]                 = interactOneWord $ hx_hd_priv   Nothing
 mainArgs ["hd-priv", i]              = interactOneWord . hx_hd_priv $ Just (prvSubKeyE,   parseWord32 i)
 mainArgs ["hd-priv", "--hard", i]    = interactOneWord . hx_hd_priv $ Just (primeSubKeyE, parseWord32 i)
@@ -387,6 +417,8 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx addr"
                              ,"hx wif-to-secret"
                              ,"hx secret-to-wif"
+                             ,"hx compress                               [0]"
+                             ,"hx uncompress                             [0]"
                              ,"hx mktx <TXFILE> --input <TXHASH>:<INDEX> ... --output <ADDR>:<AMOUNT>"
                              ,"hx sign-input <TXFILE> <INDEX> <SCRIPT_CODE>"
                              ,"hx set-input <TXFILE> <INDEX> <SIGNATURE_AND_PUBKEY_SCRIPT>"
