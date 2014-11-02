@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings, TypeSynonymInstances, FlexibleInstances #-}
-import qualified Prelude as Prelude
 import Prelude hiding (interact, filter)
 import Data.Maybe
 import Data.Either (partitionEithers)
@@ -9,14 +8,13 @@ import Data.Monoid
 import Data.Scientific
 import Data.Binary
 import Data.Functor ((<$>))
-import Data.Char (isDigit,isSpace)
+import Data.Char (isDigit)
 import Data.List (isPrefixOf)
 import qualified Data.RFC1751 as RFC1751
 import System.Environment
 import Control.Monad (unless)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
-import qualified Data.ByteString.Base16 as B16
 
 import Network.Haskoin.Crypto
 import Network.Haskoin.Internals (FieldP, FieldN, BigWord(BigWord), Point
@@ -30,63 +28,7 @@ import Network.Haskoin.Internals (FieldP, FieldN, BigWord(BigWord), Point
                                  , fromMnemonic
                                  )
 import Network.Haskoin.Util
-
-type BS = BS.ByteString
-
-class Hex s where
-  -- | Decode a base16 (HEX) representation to a bytestring
-  decodeHex :: String -> s -> BS
-
-  -- | Encode a bytestring to a base16 (HEX) representation
-  encodeHex :: BS -> s
-
-instance Hex String where
-  decodeHex msg = decodeHex msg . B8.pack
-  encodeHex     = B8.unpack . encodeHex
-
-instance Hex BS where
-  encodeHex    = B16.encode
-  decodeHex msg s
-    | BS.null rest = s'
-    | otherwise    = error $ msg ++ ": invalid hex encoding"
-    where (s',rest) = B16.decode s
-
-class Filter s where
-  filter :: (Char -> Bool) -> s -> s
-
-instance Filter String where
-  filter = Prelude.filter
-
-instance Filter BS where
-  filter = B8.filter
-
-class Interact s where
-  interact :: (s -> s) -> IO ()
-
-instance Interact String where
-  interact = Prelude.interact
-
-instance Interact BS.ByteString where
-  interact = BS.interact
-
-putLn :: (IsString s, Monoid s) => s -> s
-putLn = (<> "\n")
-
-ignoreSpaces :: Filter s => s -> s
-ignoreSpaces  = filter $ not . isSpace
-
-interactOneWord :: (IsString s, Monoid s, Filter s, Interact s) => (s -> s) -> IO ()
-interactOneWord f = interact $ putLn . f . ignoreSpaces
-
-putHex :: (Hex s, Binary a) => a -> s
-putHex = encodeHex . encode'
-
-getHex :: (Hex s, Binary a) => String -> s -> a
-getHex msg = decode' . decodeHex msg
-
-interactHex :: (BS -> BS) -> IO ()
-interactHex f = BS.interact $ putLn . encodeHex . f
-                            . decodeHex "input" . ignoreSpaces
+import Utils
 
 readTxFile :: FilePath -> IO Tx
 readTxFile file = getHex "transaction" . ignoreSpaces <$> BS.readFile file
@@ -184,10 +126,6 @@ primeSubKeyE k = fromMaybe (error "failed to derive private prime sub key") . pr
 
 pubSubKeyE :: XPubKey -> Word32 -> XPubKey
 pubSubKeyE k = fromMaybe (error "failed to derive public sub key") . pubSubKey k
-
-splitOn :: Char -> String -> (String, String)
-splitOn c xs = (ys, tail zs)
-  where (ys,zs) = span (/= c) xs
 
 readOutPoint :: String -> OutPoint
 readOutPoint xs = OutPoint (getHexLE "transaction hash" ys) (read zs) where (ys,zs) = splitOn ':' xs
