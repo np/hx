@@ -28,6 +28,8 @@ import Network.Haskoin.Internals (FieldP, FieldN, BigWord(BigWord), Point
                                  , fromMnemonic
                                  )
 import Network.Haskoin.Util
+import PrettyScript
+import ParseScript
 import Utils
 
 readTxFile :: FilePath -> IO Tx
@@ -379,6 +381,9 @@ mainArgs ("mktx":file:args)          = BS.writeFile file $ hx_mktx args
 mainArgs ["sign-input",f,i,s]        = hx_sign_input f i s
 mainArgs ["set-input",f,i,s]         = hx_set_input f i s
 mainArgs ["validsig",f,i,s,sig]      = hx_validsig f i s sig
+mainArgs ["rawscript"]               = interact $ (++"\n") . putHex . parseReadP parseScript
+mainArgs ("rawscript":s)             = putStrLn . putHex . parseReadP parseScript $ unwords s
+mainArgs ["showscript"]              = interactOneWord (showDoc . prettyScript . getHex "script")
 mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"Supported commands:"
@@ -409,6 +414,8 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx decode-addr"
                              ,"hx encode-addr"
                              ,"hx encode-addr --script                   [0]"
+                             ,"hx rawscript <SCRIPT_OP>*"
+                             ,"hx showscript"
                              ,"hx ec-multiply  <HEX-FIELDN> <HEX-POINT>"
                              ,"hx ec-tweak-add <HEX-FIELDN> <HEX-POINT>"
                              ,"hx ec-add-modp  <HEX-FIELDP> <HEX-FIELDP>"

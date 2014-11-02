@@ -31,6 +31,8 @@ Supported commands:
     hx decode-addr
     hx encode-addr
     hx encode-addr --script                   [0]
+    hx rawscript <SCRIPT_OP>*
+    hx showscript
     hx ec-multiply  <HEX-FIELDN> <HEX-POINT>
     hx ec-tweak-add <HEX-FIELDN> <HEX-POINT>
     hx ec-add-modp  <HEX-FIELDP> <HEX-FIELDP>
