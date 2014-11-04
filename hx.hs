@@ -231,18 +231,18 @@ hx_hd_path (m:p) i
 hx_bip39_mnemonic :: Hex s => s -> String
 hx_bip39_mnemonic = either error id . toMnemonic . decodeHex "seed"
 
-hx_bip39_hex :: String -> String
-hx_bip39_hex = putLn . bsToHex . either error id . fromMnemonic
+hx_bip39_hex :: (Hex s, IsString s, Monoid s) => String -> s
+hx_bip39_hex = putLn . encodeHex . either error id . fromMnemonic
 
-hx_bip39_seed :: Passphrase -> Mnemonic -> String
-hx_bip39_seed pf = putLn . bsToHex . either error id . mnemonicToSeed pf
+hx_bip39_seed :: (Hex s, IsString s, Monoid s) => Passphrase -> Mnemonic -> s
+hx_bip39_seed pf = putLn . encodeHex . either error id . mnemonicToSeed pf
 
 hx_btc, hx_satoshi :: String -> String
 hx_btc     = formatScientific Fixed (Just 8) . (/ one_btc_in_satoshi) . read
 hx_satoshi = formatScientific Fixed (Just 0) . (* one_btc_in_satoshi) . read
 
-hx_decode_addr :: String -> String
-hx_decode_addr = bsToHex . encode' . getAddrHash . base58ToAddrE
+hx_decode_addr :: Hex s => String -> s
+hx_decode_addr = putHex . getAddrHash . base58ToAddrE
 
 hx_encode_addr :: Hex s => (Word160 -> Address) -> s -> String
 hx_encode_addr f = addrToBase58 . f . getHex "address"
@@ -308,6 +308,12 @@ hx_sign_input' tx index script_output privkey = sig where
   msg = txSigHash  tx script_output index sh
   sig = TxSignature (detSignMsg msg privkey) sh
 
+hx_rawscript :: String -> String
+hx_rawscript = putLn . putHex . parseReadP parseScript
+
+hx_showscript :: String -> String
+hx_showscript = showDoc . prettyScript . getHex "script"
+
 -- TODO do something better than 'read' to parse the index
 parseWord32 :: String -> Word32
 parseWord32 = read
@@ -354,9 +360,9 @@ mainArgs ["base58check-decode"]      = interactOneWord hx_base58check_decode
 mainArgs ["encode-addr", "--script"] = interactOneWord $ hx_encode_addr ScriptAddress
 mainArgs ["encode-addr"]             = interactOneWord $ hx_encode_addr PubKeyAddress
 mainArgs ["decode-addr"]             = interactOneWord hx_decode_addr
-mainArgs ["encode-hex"]              = interact encodeHex
+mainArgs ["encode-hex"]              = interact $ putLn . encodeHex
 mainArgs ["decode-hex"]              = interact $ decodeHex "input" . ignoreSpaces
-mainArgs ["ripemd-hash"]             = interact $ encodeHex . hash160BS . hash256BS
+mainArgs ["ripemd-hash"]             = interact $ putLn . encodeHex . hash160BS . hash256BS
 mainArgs ["sha256"]                  = interactHex hash256BS
 mainArgs ["ec-double", p]            = B8.putStrLn . putPoint . doublePoint $ getPoint p
 mainArgs ["ec-add", p, q]            = B8.putStrLn . putPoint $ addPoint (getPoint p) (getPoint q)
@@ -381,9 +387,9 @@ mainArgs ("mktx":file:args)          = BS.writeFile file $ hx_mktx args
 mainArgs ["sign-input",f,i,s]        = hx_sign_input f i s
 mainArgs ["set-input",f,i,s]         = hx_set_input f i s
 mainArgs ["validsig",f,i,s,sig]      = hx_validsig f i s sig
-mainArgs ["rawscript"]               = interact $ (++"\n") . putHex . parseReadP parseScript
-mainArgs ("rawscript":s)             = putStrLn . putHex . parseReadP parseScript $ unwords s
-mainArgs ["showscript"]              = interactOneWord (showDoc . prettyScript . getHex "script")
+mainArgs ["rawscript"]               = interact hx_rawscript
+mainArgs ("rawscript":s)             = putStr . hx_rawscript $ unwords s
+mainArgs ["showscript"]              = interactOneWord $ hx_showscript
 mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"Supported commands:"

@@ -56,6 +56,8 @@ putLn = (<> "\n")
 ignoreSpaces :: Filter s => s -> s
 ignoreSpaces  = filter $ not . isSpace
 
+-- | Ignoring the spaces in the input, hence the function receives a single
+--   word.
 interactOneWord :: (IsString s, Monoid s, Filter s, Interact s) => (s -> s) -> IO ()
 interactOneWord f = interact $ putLn . f . ignoreSpaces
 
@@ -66,8 +68,7 @@ getHex :: (Hex s, Binary a) => String -> s -> a
 getHex msg = decode' . decodeHex msg
 
 interactHex :: (BS -> BS) -> IO ()
-interactHex f = BS.interact $ putLn . encodeHex . f
-                            . decodeHex "input" . ignoreSpaces
+interactHex f = interactOneWord $ encodeHex . f . (decodeHex "input" :: BS -> BS)
 
 splitOn :: Char -> String -> (String, String)
 splitOn c xs = (ys, tail zs)
