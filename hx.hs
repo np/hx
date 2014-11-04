@@ -363,7 +363,11 @@ mainArgs ["decode-addr"]             = interactOneWord hx_decode_addr
 mainArgs ["encode-hex"]              = interact $ putLn . encodeHex
 mainArgs ["decode-hex"]              = interact $ decodeHex "input" . ignoreSpaces
 mainArgs ["ripemd-hash"]             = interact $ putLn . encodeHex . hash160BS . hash256BS
+mainArgs ["ripemd160"]               = interactHex hash160BS
 mainArgs ["sha256"]                  = interactHex hash256BS
+mainArgs ["sha1"]                    = interactHex hashSha1BS
+mainArgs ["hash256"]                 = interactHex $ hash256BS . hash256BS
+mainArgs ["hash160"]                 = interactHex $ hash160BS . hash256BS
 mainArgs ["ec-double", p]            = B8.putStrLn . putPoint . doublePoint $ getPoint p
 mainArgs ["ec-add", p, q]            = B8.putStrLn . putPoint $ addPoint (getPoint p) (getPoint q)
 mainArgs ["ec-multiply", x, p]       = B8.putStrLn . putPoint $ mulPoint (getHexN x) (getPoint p)
@@ -446,6 +450,10 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx decode-hex                             [0]"
                              ,"hx ripemd-hash"
                              ,"hx sha256"
+                             ,"hx ripemd160                              [0]"
+                             ,"hx sha1                                   [0]"
+                             ,"hx hash160                                [0]"
+                             ,"hx hash256                                [0]"
                              ,""
                              ,"[0]: Not available in sx"
                              ,""

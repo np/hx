@@ -57,6 +57,10 @@ Supported commands:
     hx decode-hex                             [0]
     hx ripemd-hash
     hx sha256
+    hx sha1                                   [0]
+    hx ripemd160                              [0]
+    hx hash160                                [0]
+    hx hash256                                [0]
 
     [0]: Not available in sx
 
