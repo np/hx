@@ -48,6 +48,7 @@ Supported commands:
     hx ec-int-n <DECIMAL-INTEGER>             [0]
     hx ec-x     <HEX-POINT>                   [0]
     hx ec-x     <HEX-POINT>                   [0]
+    hx mnemonic
     hx bip39-mnemonic                         [0]
     hx bip39-hex                              [0]
     hx bip39-seed <PASSPHRASE>                [0]

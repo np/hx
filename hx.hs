@@ -30,6 +30,7 @@ import Network.Haskoin.Internals (FieldP, FieldN, BigWord(BigWord), Point
 import Network.Haskoin.Util
 import PrettyScript
 import ParseScript
+import Mnemonic (hex_to_mn, mn_to_hex)
 import Utils
 
 readTxFile :: FilePath -> IO Tx
@@ -261,6 +262,15 @@ hx_base58check_decode = encodeHex
                       . fromMaybe (error "invalid base58check encoding")
                       . decodeBase58Check
 
+hx_mnemonic :: BS -> BS
+hx_mnemonic s = putLn $ case B8.words s of
+  []  -> error "mnemonic: expects either one hexadecimal string or a list of words"
+  [x] -> let (y,z) = hex_to_mn x in
+         if BS.null z
+           then B8.unwords y
+           else error "mnemonic: invalid hex encoding"
+  xs  -> mn_to_hex xs
+
 hx_rfc1751_key      :: (Monoid s, IsString s, Hex s) => BS -> s
 hx_rfc1751_key      = putLn . encodeHex
                     . fromMaybe (error "invalid RFC1751 mnemonic") . RFC1751.mnemonicToKey
@@ -387,6 +397,7 @@ mainArgs ["btc", x]                  = putStrLn $ hx_btc x
 mainArgs ["satoshi", x]              = putStrLn $ hx_satoshi x
 mainArgs ["rfc1751-key"]             = interact hx_rfc1751_key
 mainArgs ["rfc1751-mnemonic"]        = interactOneWord hx_rfc1751_mnemonic
+mainArgs ["mnemonic"]                = interact hx_mnemonic
 mainArgs ("mktx":file:args)          = BS.writeFile file $ hx_mktx args
 mainArgs ["sign-input",f,i,s]        = hx_sign_input f i s
 mainArgs ["set-input",f,i,s]         = hx_set_input f i s
@@ -441,6 +452,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx ec-int-n <DECIMAL-INTEGER>             [0]"
                              ,"hx ec-x     <HEX-POINT>                   [0]"
                              ,"hx ec-x     <HEX-POINT>                   [0]"
+                             ,"hx mnemonic"
                              ,"hx bip39-mnemonic                         [0]"
                              ,"hx bip39-hex                              [0]"
                              ,"hx bip39-seed <PASSPHRASE>                [0]"
