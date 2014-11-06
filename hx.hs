@@ -14,15 +14,16 @@ import qualified Data.RFC1751 as RFC1751
 import System.Environment
 import Control.Monad (unless)
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Char8 as B8
 
 import Network.Haskoin.Crypto
 import Network.Haskoin.Internals (FieldP, FieldN, BigWord(BigWord), Point
                                  , curveP, curveN, curveG, integerA, integerB
                                  , getX, getY, addPoint, doublePoint, mulPoint
-                                 , OutPoint(OutPoint), Tx, Script
+                                 , OutPoint(OutPoint), Tx(..), Script
                                  , SigHash(SigAll), TxSignature(TxSignature)
-                                 , txIn, scriptInput
+                                 , TxIn(..)
                                  , buildAddrTx, txSigHash, encodeSig, decodeSig
                                  , getOutputAddress, decodeOutput
                                  , fromMnemonic
@@ -31,6 +32,7 @@ import Network.Haskoin.Util
 import PrettyScript
 import ParseScript
 import Mnemonic (hex_to_mn, mn_to_hex)
+import DetailedTx (txDetailedJSON)
 import Utils
 
 readTxFile :: FilePath -> IO Tx
@@ -324,6 +326,12 @@ hx_rawscript = putLn . putHex . parseReadP parseScript
 hx_showscript :: String -> String
 hx_showscript = showDoc . prettyScript . getHex "script"
 
+hx_showtx :: [String] -> IO ()
+hx_showtx [file] = LBS.putStr . txDetailedJSON =<< readTxFile file
+hx_showtx ("-j":xs) = hx_showtx xs
+hx_showtx ("--json":xs) = hx_showtx xs
+hx_showtx _ = error "Usage: hx showtx [-j|--json] <TXFILE>"
+
 -- TODO do something better than 'read' to parse the index
 parseWord32 :: String -> Word32
 parseWord32 = read
@@ -402,6 +410,7 @@ mainArgs ("mktx":file:args)          = BS.writeFile file $ hx_mktx args
 mainArgs ["sign-input",f,i,s]        = hx_sign_input f i s
 mainArgs ["set-input",f,i,s]         = hx_set_input f i s
 mainArgs ["validsig",f,i,s,sig]      = hx_validsig f i s sig
+mainArgs ("showtx":args)             = hx_showtx args
 mainArgs ["rawscript"]               = interact hx_rawscript
 mainArgs ("rawscript":s)             = putStr . hx_rawscript $ unwords s
 mainArgs ["showscript"]              = interactOneWord $ hx_showscript
@@ -416,6 +425,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx compress                               [0]"
                              ,"hx uncompress                             [0]"
                              ,"hx mktx <TXFILE> --input <TXHASH>:<INDEX> ... --output <ADDR>:<AMOUNT>"
+                             ,"hx showtx [-j|--json] <TXFILE>            [1]"
                              ,"hx sign-input <TXFILE> <INDEX> <SCRIPT_CODE>"
                              ,"hx set-input  <TXFILE> <INDEX> <SIGNATURE_AND_PUBKEY_SCRIPT>"
                              ,"hx validsig   <TXFILE> <INDEX> <SCRIPT_CODE> <SIGNATURE>"
@@ -468,6 +478,8 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx hash256                                [0]"
                              ,""
                              ,"[0]: Not available in sx"
+                             ,"[1]: `hx showtx` is always using JSON output,"
+                             ,"     `-j` and `--json` are ignored."
                              ,""
                              ,"PATH      ::= <PATH-HEAD> <PATH-CONT>"
                              ,"PATH-HEAD ::= 'A'   [address (compressed)]"

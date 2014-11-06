@@ -12,6 +12,7 @@ Supported commands:
     hx compress                               [0]
     hx uncompress                             [0]
     hx mktx <TXFILE> --input <TXHASH>:<INDEX> ... --output <ADDR>:<AMOUNT>
+    hx showtx [-j|--json] <TXFILE>            [1]
     hx sign-input <TXFILE> <INDEX> <SCRIPT_CODE>
     hx set-input  <TXFILE> <INDEX> <SIGNATURE_AND_PUBKEY_SCRIPT>
     hx validsig   <TXFILE> <INDEX> <SCRIPT_CODE> <SIGNATURE>
@@ -64,6 +65,8 @@ Supported commands:
     hx hash256                                [0]
 
     [0]: Not available in sx
+    [1]: `hx showtx` is always using JSON output,
+         `-j` and `--json` are ignored.
 
     PATH      ::= <PATH-HEAD> <PATH-CONT>
     PATH-HEAD ::= 'A'   [address (compressed)]
