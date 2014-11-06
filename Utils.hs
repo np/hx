@@ -67,8 +67,11 @@ putHex = encodeHex . encode'
 getHex :: (Hex s, Binary a) => String -> s -> a
 getHex msg = decode' . decodeHex msg
 
+withHex :: (Hex s, Hex s') => (BS -> BS) -> s -> s'
+withHex f = encodeHex . f . decodeHex "input"
+
 interactHex :: (BS -> BS) -> IO ()
-interactHex f = interactOneWord $ encodeHex . f . (decodeHex "input" :: BS -> BS)
+interactHex f = interactOneWord (withHex f :: BS -> BS)
 
 splitOn :: Char -> String -> (String, String)
 splitOn c xs = (ys, tail zs)
