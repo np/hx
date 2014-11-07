@@ -75,6 +75,21 @@ xPrvImportE = fromMaybe (error "invalid extended private key") . xPrvImport
 xPubImportE :: String -> XPubKey
 xPubImportE = fromMaybe (error "invalid extended public key") . xPubImport
 
+data XKey = XPub XPubKey | XPrv XPrvKey
+
+xKeyImport :: String -> Maybe XKey
+xKeyImport s
+  | "xprv" `isPrefixOf` s = XPrv <$> xPrvImport s
+  | "xpub" `isPrefixOf` s = XPub <$> xPubImport s
+  | otherwise             = Nothing
+
+xKeyImportE :: String -> XKey
+xKeyImportE = fromMaybe (error "invalid extended public or private key") . xKeyImport
+
+pubXKey :: XKey -> XPubKey
+pubXKey (XPub k) = k
+pubXKey (XPrv k) = deriveXPubKey k
+
 xMasterImportE :: Hex s => s -> XPrvKey
 xMasterImportE = fromMaybe (error "failed to derived private root key from seed") . makeXPrvKey
                . decodeHex "seed"
@@ -211,10 +226,10 @@ hx_hd_to_wif = xPrvWIF . xPrvImportE
 
 -- TODO support private keys as well
 hx_hd_to_address :: String -> String
-hx_hd_to_address = addrToBase58 . xPubAddr . xPubImportE
+hx_hd_to_address = addrToBase58 . xPubAddr . pubXKey . xKeyImportE
 
 hx_hd_to_pubkey :: Hex s => String -> s
-hx_hd_to_pubkey = putHex . xPubKey . xPubImportE
+hx_hd_to_pubkey = putHex . xPubKey . pubXKey . xKeyImportE
 
 hx_hd_priv :: Maybe (XPrvKey -> Word32 -> XPrvKey, Word32) -> String -> String
 hx_hd_priv Nothing         = xPrvExport . xMasterImportE
@@ -222,7 +237,7 @@ hx_hd_priv (Just (sub, i)) = xPrvExport . flip sub i . xPrvImportE
 
 hx_hd_pub :: Maybe Word32 -> String -> String
 hx_hd_pub Nothing  = xPubExport . deriveXPubKey     . xPrvImportE
-hx_hd_pub (Just i) = xPubExport . flip pubSubKeyE i . xPubImportE
+hx_hd_pub (Just i) = xPubExport . flip pubSubKeyE i . pubXKey . xKeyImportE
 
 hx_hd_path :: String -> String -> String
 hx_hd_path []    _ = error "Empty path"
