@@ -34,7 +34,7 @@ import DetailedTx (txDetailedJSON)
 import Utils
 
 readTxFile :: FilePath -> IO Tx
-readTxFile file = getHex "transaction" . ignoreSpaces <$> BS.readFile file
+readTxFile file = getHex "transaction" <$> BS.readFile file
 
 one_btc_in_satoshi :: Num a => a
 one_btc_in_satoshi = 10^(8 :: Int)
@@ -65,13 +65,13 @@ getFieldN = do
   return $ fromInteger i
 
 decodeBase58E :: BS -> BS
-decodeBase58E = fromMaybe (error "invalid base58 encoding") . decodeBase58
+decodeBase58E = fromMaybe (error "invalid base58 encoding") . decodeBase58 . ignoreSpaces
 
 xPrvImportE :: String -> XPrvKey
-xPrvImportE = fromMaybe (error "invalid extended private key") . xPrvImport
+xPrvImportE = fromMaybe (error "invalid extended private key") . xPrvImport . ignoreSpaces
 
 xPubImportE :: String -> XPubKey
-xPubImportE = fromMaybe (error "invalid extended public key") . xPubImport
+xPubImportE = fromMaybe (error "invalid extended public key") . xPubImport . ignoreSpaces
 
 data XKey = XPub XPubKey | XPrv XPrvKey
 
@@ -82,7 +82,7 @@ xKeyImport s
   | otherwise             = Nothing
 
 xKeyImportE :: String -> XKey
-xKeyImportE = fromMaybe (error "invalid extended public or private key") . xKeyImport
+xKeyImportE = fromMaybe (error "invalid extended public or private key") . xKeyImport . ignoreSpaces
 
 pubXKey :: XKey -> XPubKey
 pubXKey (XPub k) = k
@@ -131,7 +131,7 @@ derivePubPath ('/':xs) = goIndex $ span isDigit xs
 derivePubPath _ = error "malformed path"
 
 fromWIFE :: String -> PrvKey
-fromWIFE = fromMaybe (error "invalid WIF private key") . fromWIF
+fromWIFE = fromMaybe (error "invalid WIF private key") . fromWIF . ignoreSpaces
 
 base58ToAddrE :: String -> Address
 base58ToAddrE = fromMaybe (error "invalid bitcoin address") . base58ToAddr
@@ -278,7 +278,7 @@ hx_base58check_decode = encodeHex
                       . decodeBase58Check
 
 hx_mnemonic :: BS -> BS
-hx_mnemonic s = putLn $ case B8.words s of
+hx_mnemonic s = case B8.words s of
   []  -> error "mnemonic: expects either one hexadecimal string or a list of words"
   [x] -> let (y,z) = hex_to_mn x in
          if BS.null z
@@ -286,10 +286,10 @@ hx_mnemonic s = putLn $ case B8.words s of
            else error "mnemonic: invalid hex encoding"
   xs  -> mn_to_hex xs
 
-hx_rfc1751_key      :: (Monoid s, IsString s, Hex s) => BS -> s
-hx_rfc1751_key      = putLn . encodeHex
-                    . fromMaybe (error "invalid RFC1751 mnemonic") . RFC1751.mnemonicToKey
-                    . B8.unpack
+hx_rfc1751_key :: Hex s => BS -> s
+hx_rfc1751_key = encodeHex
+               . fromMaybe (error "invalid RFC1751 mnemonic") . RFC1751.mnemonicToKey
+               . B8.unpack
 
 hx_rfc1751_mnemonic :: Hex s => s -> BS
 hx_rfc1751_mnemonic = B8.pack
@@ -314,17 +314,17 @@ hx_validsig' tx i out (TxSignature sig sh) pub =
 hx_validsig :: FilePath -> String -> String -> String -> IO ()
 hx_validsig file i s sig =
   do tx <- readTxFile file
-     interactOneWord $ putSuccess
-                     . hx_validsig' tx (read i) (getHex "script" s) (getTxSig sig)
-                     . getPubKey
+     interact $ putSuccess
+              . hx_validsig' tx (read i) (getHex "script" s) (getTxSig sig)
+              . getPubKey
   where putSuccess :: Bool -> BS
-        putSuccess True = "Status: OK"
-        putSuccess  _   = "Status: Failed"
+        putSuccess True = "Status: OK\n"
+        putSuccess  _   = "Status: Failed\n"
 
 hx_sign_input :: FilePath -> String -> String -> IO ()
 hx_sign_input file index script_code =
   do tx <- readTxFile file
-     interactOneWord $ putTxSig . hx_sign_input' tx (read index) (getHex "script" script_code) . fromWIFE
+     interactLn $ putTxSig . hx_sign_input' tx (read index) (getHex "script" script_code) . fromWIFE
 
 -- The pure and typed counter part of hx_sign_input
 hx_sign_input' :: Tx -> Int -> Script -> PrvKey -> TxSignature
@@ -334,13 +334,13 @@ hx_sign_input' tx index script_output privkey = sig where
   sig = TxSignature (detSignMsg msg privkey) sh
 
 hx_rawscript :: String -> String
-hx_rawscript = putLn . putHex . parseReadP parseScript
+hx_rawscript = putHex . parseReadP parseScript
 
 hx_showscript :: String -> String
 hx_showscript = showDoc . prettyScript . getHex "script"
 
 hx_showtx :: [String] -> IO ()
-hx_showtx [file] = LBS.putStr . txDetailedJSON =<< readTxFile file
+hx_showtx [file] = putStr . txDetailedJSON =<< readTxFile file
 hx_showtx ("-j":xs) = hx_showtx xs
 hx_showtx ("--json":xs) = hx_showtx xs
 hx_showtx _ = error "Usage: hx showtx [-j|--json] <TXFILE>"
@@ -366,34 +366,35 @@ putPoint :: Hex s => Point -> s
 putPoint = putHex . PubKey
 
 mainArgs :: [String] -> IO ()
-mainArgs ["pubkey"]                  = interactOneWord hx_pubkey
-mainArgs ["addr"]                    = interactOneWord hx_addr
-mainArgs ["wif-to-secret"]           = interactOneWord hx_wif_to_secret
-mainArgs ["secret-to-wif"]           = interactOneWord hx_secret_to_wif
-mainArgs ["compress"]                = interactOneWord hx_compress
-mainArgs ["uncompress"]              = interactOneWord hx_uncompress
-mainArgs ["hd-priv"]                 = interactOneWord $ hx_hd_priv   Nothing
-mainArgs ["hd-priv", i]              = interactOneWord . hx_hd_priv $ Just (prvSubKeyE,   parseWord32 i)
-mainArgs ["hd-priv", "--hard", i]    = interactOneWord . hx_hd_priv $ Just (primeSubKeyE, parseWord32 i)
-mainArgs ["hd-pub"]                  = interactOneWord $ hx_hd_pub    Nothing
-mainArgs ["hd-pub", i]               = interactOneWord . hx_hd_pub  . Just $ parseWord32 i
-mainArgs ["hd-path", p]              = interactOneWord $ hx_hd_path p
-mainArgs ["hd-to-wif"]               = interactOneWord hx_hd_to_wif
-mainArgs ["hd-to-pubkey"]            = interactOneWord hx_hd_to_pubkey
-mainArgs ["hd-to-address"]           = interactOneWord hx_hd_to_address
-mainArgs ["bip39-mnemonic"]          = interactOneWord hx_bip39_mnemonic
-mainArgs ["bip39-hex"]               = interact hx_bip39_hex
-mainArgs ["bip39-seed", pass]        = interact $ hx_bip39_seed pass
-mainArgs ["base58-encode"]           = interactOneWord hx_base58_encode
-mainArgs ["base58-decode"]           = interactOneWord hx_base58_decode
-mainArgs ["base58check-encode"]      = interactOneWord hx_base58check_encode
-mainArgs ["base58check-decode"]      = interactOneWord hx_base58check_decode
-mainArgs ["encode-addr", "--script"] = interactOneWord $ hx_encode_addr ScriptAddress
-mainArgs ["encode-addr"]             = interactOneWord $ hx_encode_addr PubKeyAddress
-mainArgs ["decode-addr"]             = interactOneWord hx_decode_addr
-mainArgs ["encode-hex"]              = interact $ putLn . encodeHex
-mainArgs ["decode-hex"]              = interact $ decodeHex "input" . ignoreSpaces
-mainArgs ["ripemd-hash"]             = interact $ putLn . encodeHex . hash160BS . hash256BS
+mainArgs ["pubkey"]                  = interactLn hx_pubkey
+mainArgs ["addr"]                    = interactLn hx_addr
+mainArgs ["wif-to-secret"]           = interactLn hx_wif_to_secret
+mainArgs ["secret-to-wif"]           = interactLn hx_secret_to_wif
+mainArgs ["compress"]                = interactLn hx_compress
+mainArgs ["uncompress"]              = interactLn hx_uncompress
+mainArgs ["hd-priv"]                 = interactLn $ hx_hd_priv   Nothing
+mainArgs ["hd-priv", i]              = interactLn . hx_hd_priv $ Just (prvSubKeyE,   parseWord32 i)
+mainArgs ["hd-priv", "--hard", i]    = interactLn . hx_hd_priv $ Just (primeSubKeyE, parseWord32 i)
+mainArgs ["hd-pub"]                  = interactLn $ hx_hd_pub    Nothing
+mainArgs ["hd-pub", i]               = interactLn . hx_hd_pub  . Just $ parseWord32 i
+mainArgs ["hd-path", p]              = interactLn $ hx_hd_path p
+mainArgs ["hd-to-wif"]               = interactLn hx_hd_to_wif
+mainArgs ["hd-to-pubkey"]            = interactLn hx_hd_to_pubkey
+mainArgs ["hd-to-address"]           = interactLn hx_hd_to_address
+mainArgs ["bip39-mnemonic"]          = interactLn hx_bip39_mnemonic
+mainArgs ["bip39-hex"]               = interactLn hx_bip39_hex
+mainArgs ["bip39-seed", pass]        = interactLn $ hx_bip39_seed pass
+mainArgs ["base58-encode"]           = interactLn hx_base58_encode
+mainArgs ["base58-decode"]           = interactLn hx_base58_decode
+mainArgs ["base58check-encode"]      = interactLn hx_base58check_encode
+mainArgs ["base58check-decode"]      = interactLn hx_base58check_decode
+mainArgs ["encode-addr", "--script"] = interactLn $ hx_encode_addr ScriptAddress
+mainArgs ["encode-addr"]             = interactLn $ hx_encode_addr PubKeyAddress
+mainArgs ["decode-addr"]             = interactLn hx_decode_addr
+mainArgs ["validaddr",address]       = B8.putStrLn $ hx_validaddr address
+mainArgs ["encode-hex"]              = interactLn encodeHex
+mainArgs ["decode-hex"]              = interact $ decodeHex "input"
+mainArgs ["ripemd-hash"]             = interactLn $ encodeHex . hash160BS . hash256BS
 mainArgs ["ripemd160"]               = interactHex hash160BS
 mainArgs ["sha256"]                  = interactHex hash256BS
 mainArgs ["sha1"]                    = interactHex hashSha1BS
@@ -416,17 +417,17 @@ mainArgs ["ec-x", p]                 = B8.putStrLn . putHex . fromMaybe (error "
 mainArgs ["ec-y", p]                 = B8.putStrLn . putHex . fromMaybe (error "invalid point") . getY $ getPoint p
 mainArgs ["btc", x]                  = putStrLn $ hx_btc x
 mainArgs ["satoshi", x]              = putStrLn $ hx_satoshi x
-mainArgs ["rfc1751-key"]             = interact hx_rfc1751_key
-mainArgs ["rfc1751-mnemonic"]        = interactOneWord hx_rfc1751_mnemonic
-mainArgs ["mnemonic"]                = interact hx_mnemonic
+mainArgs ["rfc1751-key"]             = interactLn hx_rfc1751_key
+mainArgs ["rfc1751-mnemonic"]        = interactLn hx_rfc1751_mnemonic
+mainArgs ["mnemonic"]                = interactLn hx_mnemonic
 mainArgs ("mktx":file:args)          = BS.writeFile file $ hx_mktx args
 mainArgs ["sign-input",f,i,s]        = hx_sign_input f i s
 mainArgs ["set-input",f,i,s]         = hx_set_input f i s
 mainArgs ["validsig",f,i,s,sig]      = hx_validsig f i s sig
 mainArgs ("showtx":args)             = hx_showtx args
-mainArgs ["rawscript"]               = interact hx_rawscript
-mainArgs ("rawscript":s)             = putStr . hx_rawscript $ unwords s
-mainArgs ["showscript"]              = interactOneWord $ hx_showscript
+mainArgs ["rawscript"]               = interactLn hx_rawscript
+mainArgs ("rawscript":s)             = putStrLn . hx_rawscript $ unwords s
+mainArgs ["showscript"]              = interactLn $ hx_showscript
 mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"Supported commands:"

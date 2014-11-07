@@ -36,7 +36,7 @@ instance Hex BS where
   decodeHex msg s
     | BS.null rest = s'
     | otherwise    = error $ msg ++ ": invalid hex encoding"
-    where (s',rest) = B16.decode s
+    where (s',rest) = B16.decode (ignoreSpaces s)
 
 class Filter s where
   filter :: (Char -> Bool) -> s -> s
@@ -78,10 +78,8 @@ putLn = (<> "\n")
 ignoreSpaces :: Filter s => s -> s
 ignoreSpaces  = filter $ not . isSpace
 
--- | Ignoring the spaces in the input, hence the function receives a single
---   word.
-interactOneWord :: (IsString s, Monoid s, Filter s, Interact s) => (s -> s) -> IO ()
-interactOneWord f = interact $ putLn . f . ignoreSpaces
+interactLn :: (IsString s, Monoid s, Interact s) => (s -> s) -> IO ()
+interactLn f = interact $ putLn . f
 
 putHex :: (Hex s, Binary a) => a -> s
 putHex = encodeHex . encode'
@@ -89,11 +87,12 @@ putHex = encodeHex . encode'
 getHex :: (Hex s, Binary a) => String -> s -> a
 getHex msg = decode' . decodeHex msg
 
-withHex :: (Hex s, Hex s') => (BS -> BS) -> s -> s'
-withHex f = encodeHex . f . decodeHex "input"
+withHex :: (Hex s, Hex s', Monoid s', IsString s') => (BS -> BS) -> s -> s'
+withHex f = putLn . encodeHex . f . decodeHex "input"
 
 interactHex :: (BS -> BS) -> IO ()
-interactHex f = interactOneWord (withHex f :: BS -> BS)
+interactHex f = interact (withHex f :: BS -> BS)
+
 
 splitOn :: Char -> String -> (String, String)
 splitOn c xs = (ys, tail zs)
