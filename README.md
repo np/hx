@@ -48,7 +48,7 @@ Supported commands:
     hx ec-int-p <DECIMAL-INTEGER>             [0]
     hx ec-int-n <DECIMAL-INTEGER>             [0]
     hx ec-x     <HEX-POINT>                   [0]
-    hx ec-x     <HEX-POINT>                   [0]
+    hx ec-y     <HEX-POINT>                   [0]
     hx mnemonic
     hx bip39-mnemonic                         [0]
     hx bip39-hex                              [0]
