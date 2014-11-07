@@ -248,11 +248,11 @@ hx_hd_path (m:p) i
 hx_bip39_mnemonic :: Hex s => s -> String
 hx_bip39_mnemonic = either error id . toMnemonic . decodeHex "seed"
 
-hx_bip39_hex :: (Hex s, IsString s, Monoid s) => String -> s
-hx_bip39_hex = putLn . encodeHex . either error id . fromMnemonic
+hx_bip39_hex :: Hex s => String -> s
+hx_bip39_hex = encodeHex . either error id . fromMnemonic
 
-hx_bip39_seed :: (Hex s, IsString s, Monoid s) => Passphrase -> Mnemonic -> s
-hx_bip39_seed pf = putLn . encodeHex . either error id . mnemonicToSeed pf
+hx_bip39_seed :: Hex s => Passphrase -> Mnemonic -> s
+hx_bip39_seed pf = encodeHex . either error id . mnemonicToSeed pf
 
 hx_btc, hx_satoshi :: String -> String
 hx_btc     = formatScientific Fixed (Just 8) . (/ one_btc_in_satoshi) . read
