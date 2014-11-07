@@ -392,6 +392,46 @@ getPoint = pubKeyPoint . getHex "curve point"
 putPoint :: Hex s => Point -> s
 putPoint = putHex . PubKey
 
+hx_ec_double :: Hex s => [s] -> s
+hx_ec_double [p] = putPoint $ doublePoint (getPoint p)
+hx_ec_double _   = error "Usage: hx ec-multiply <HEX-FIELDN> <HEX-POINT>"
+
+hx_ec_multiply :: Hex s => [s] -> s
+hx_ec_multiply [x, p] = putPoint $ mulPoint (getHexN x) (getPoint p)
+hx_ec_multiply _      = error "Usage: hx ec-multiply <HEX-FIELDN> <HEX-POINT>"
+
+hx_ec_add :: Hex s => [s] -> s
+hx_ec_add [p, q] = putPoint $ addPoint (getPoint p) (getPoint q)
+hx_ec_add _      = error "Usage: hx ec-add <HEX-POINT> <HEX-POINT>"
+
+hx_ec_tweak_add :: Hex s => [s] -> s
+hx_ec_tweak_add [x, p] = putPoint $ addPoint (mulPoint (getHexN x) curveG) (getPoint p)
+hx_ec_tweak_add _      = error "Usage: hx ec-tweak-add <HEX-FIELDN> <HEX-POINT>"
+
+hx_ec_add_modp :: Hex s => [s] -> s
+hx_ec_add_modp [x, y] = putHex $ getHexP x + getHexP y
+hx_ec_add_modp _      = error "Usage: hx ec-add-modp <HEX-FIELDP> <HEX-FIELDP>"
+
+hx_ec_add_modn :: Hex s => [s] -> s
+hx_ec_add_modn [x, y] = putHex $ getHexN x + getHexN y
+hx_ec_add_modn _      = error "Usage: hx ec-add-modn <HEX-FIELDN> <HEX-FIELDN>"
+
+hx_ec_int_modp :: [String] -> String
+hx_ec_int_modp [x] = putHex (BigWord (read x) :: FieldP)
+hx_ec_int_modp _   = error "Usage: hx ec-int-modp <DECIMAL-INTEGER>"
+
+hx_ec_int_modn :: [String] -> String
+hx_ec_int_modn [x] = putHex (BigWord (read x) :: FieldN)
+hx_ec_int_modn _   = error "Usage: hx ec-int-modn <DECIMAL-INTEGER>"
+
+hx_ec_x :: Hex s => [s] -> s
+hx_ec_x [p] = putHex . fromMaybe (error "invalid point") . getX $ getPoint p
+hx_ec_x _   = error "Usage: hx ec-x <HEX-POINT>"
+
+hx_ec_y :: Hex s => [s] -> s
+hx_ec_y [p] = putHex . fromMaybe (error "invalid point") . getY $ getPoint p
+hx_ec_y _   = error "Usage: hx ec-y <HEX-POINT>"
+
 mainArgs :: [String] -> IO ()
 mainArgs ["pubkey"]                  = interactLn hx_pubkey
 mainArgs ["addr"]                    = interactLn hx_addr
@@ -427,22 +467,22 @@ mainArgs ["sha256"]                  = interactHex hash256BS
 mainArgs ["sha1"]                    = interactHex hashSha1BS
 mainArgs ["hash256"]                 = interactHex $ hash256BS . hash256BS
 mainArgs ["hash160"]                 = interactHex $ hash160BS . hash256BS
-mainArgs ["ec-double", p]            = B8.putStrLn . putPoint . doublePoint $ getPoint p
-mainArgs ["ec-add", p, q]            = B8.putStrLn . putPoint $ addPoint (getPoint p) (getPoint q)
-mainArgs ["ec-multiply", x, p]       = B8.putStrLn . putPoint $ mulPoint (getHexN x) (getPoint p)
-mainArgs ["ec-tweak-add", x, p]      = B8.putStrLn . putPoint $ addPoint (mulPoint (getHexN x) curveG) (getPoint p)
-mainArgs ["ec-add-modp", x, y]       = B8.putStrLn $ putHex (getHexP x + getHexP y)
-mainArgs ["ec-add-modn", x, y]       = B8.putStrLn $ putHex (getHexN x + getHexN y :: FieldN)
+mainArgs ("ec-double":args)          = interactArgsLn hx_ec_double    args
+mainArgs ("ec-add":args)             = interactArgsLn hx_ec_add       args
+mainArgs ("ec-multiply":args)        = interactArgsLn hx_ec_multiply  args
+mainArgs ("ec-tweak-add":args)       = interactArgsLn hx_ec_tweak_add args
+mainArgs ("ec-add-modp":args)        = interactArgsLn hx_ec_add_modp  args
+mainArgs ("ec-add-modn":args)        = interactArgsLn hx_ec_add_modn  args
 mainArgs ["ec-g"]                    = B8.putStrLn $ putPoint curveG
 mainArgs ["ec-p"]                    = B8.putStrLn $ putHex (BigWord curveP   :: Word256)
 mainArgs ["ec-n"]                    = B8.putStrLn $ putHex (BigWord curveN   :: Word256)
 mainArgs ["ec-a"]                    = B8.putStrLn $ putHex (BigWord integerA :: Word256)
 mainArgs ["ec-b"]                    = B8.putStrLn $ putHex (BigWord integerB :: Word256)
 mainArgs ["ec-inf"]                  = B8.putStrLn $ putPoint makeInfPoint
-mainArgs ["ec-int-modp", x]          = B8.putStrLn $ putHex (BigWord (read x) :: FieldP)
-mainArgs ["ec-int-modn", x]          = B8.putStrLn $ putHex (BigWord (read x) :: FieldN)
-mainArgs ["ec-x", p]                 = B8.putStrLn . putHex . fromMaybe (error "invalid point") . getX $ getPoint p
-mainArgs ["ec-y", p]                 = B8.putStrLn . putHex . fromMaybe (error "invalid point") . getY $ getPoint p
+mainArgs ("ec-int-modp":args)        = interactArgsLn hx_ec_int_modp args
+mainArgs ("ec-int-modn":args)        = interactArgsLn hx_ec_int_modn args
+mainArgs ("ec-x":args)               = interactArgsLn hx_ec_x args
+mainArgs ("ec-y":args)               = interactArgsLn hx_ec_y args
 mainArgs ["btc", x]                  = putStrLn $ hx_btc x
 mainArgs ["satoshi", x]              = putStrLn $ hx_satoshi x
 mainArgs ["rfc1751-key"]             = interactLn hx_rfc1751_key
@@ -454,8 +494,7 @@ mainArgs ["sign-input",f,i,s]        = hx_sign_input f i s
 mainArgs ["set-input",f,i,s]         = hx_set_input f i s
 mainArgs ["validsig",f,i,s,sig]      = hx_validsig f i s sig
 mainArgs ("showtx":args)             = hx_showtx args
-mainArgs ["rawscript"]               = interactLn hx_rawscript
-mainArgs ("rawscript":s)             = putStrLn . hx_rawscript $ unwords s
+mainArgs ("rawscript":args)          = interactArgsLn (hx_rawscript . unwords) args
 mainArgs ["showscript"]              = interactLn $ hx_showscript
 mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
@@ -502,10 +541,10 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx ec-a                                   [0]"
                              ,"hx ec-b                                   [0]"
                              ,"hx ec-inf                                 [0]"
-                             ,"hx ec-int-p <DECIMAL-INTEGER>             [0]"
-                             ,"hx ec-int-n <DECIMAL-INTEGER>             [0]"
-                             ,"hx ec-x     <HEX-POINT>                   [0]"
-                             ,"hx ec-y     <HEX-POINT>                   [0]"
+                             ,"hx ec-int-modp <DECIMAL-INTEGER>          [0]"
+                             ,"hx ec-int-modn <DECIMAL-INTEGER>          [0]"
+                             ,"hx ec-x <HEX-POINT>                       [0]"
+                             ,"hx ec-y <HEX-POINT>                       [0]"
                              ,"hx mnemonic"
                              ,"hx bip39-mnemonic                         [0]"
                              ,"hx bip39-hex                              [0]"
