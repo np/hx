@@ -346,6 +346,20 @@ hx_showtx ("-j":xs) = hx_showtx xs
 hx_showtx ("--json":xs) = hx_showtx xs
 hx_showtx _ = error "Usage: hx showtx [-j|--json] <TXFILE>"
 
+checksum_encode :: BS -> BS
+checksum_encode d = d <> encode' (chksum32 d)
+
+checksum_decode :: BS -> BS
+checksum_decode d | chksum32 pre == decode' post = pre
+                  | otherwise                    = error "checksum does not match"
+  where (pre,post) = BS.splitAt (BS.length d - 4) d
+
+wrapBS :: Word8 -> BS -> BS
+wrapBS v s = checksum_encode (BS.cons v s)
+
+unwrapBS :: BS -> Maybe (Word8, BS)
+unwrapBS = BS.uncons . checksum_decode
+
 -- TODO do something better than 'read' to parse the index
 parseWord32 :: String -> Word32
 parseWord32 = read
