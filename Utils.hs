@@ -2,15 +2,21 @@
 module Utils where
 
 import qualified Prelude as Prelude
-import Prelude hiding (interact, filter)
+import Prelude hiding (interact, filter, putStr)
 import Data.String
 import Data.Monoid
 import Data.Binary
 import Data.Char (isSpace)
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as LBS
+import qualified Data.ByteString.Lazy.Char8 as LB8
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Base16 as B16
 import Network.Haskoin.Util
+
+subst :: Eq a => (a,a) -> a -> a
+subst (x,y) z | x == z    = y
+              | otherwise = z
 
 type BS = BS.ByteString
 
@@ -40,6 +46,22 @@ instance Filter String where
 
 instance Filter BS where
   filter = B8.filter
+
+class PutStr s where
+  putStr   :: s -> IO ()
+  putStrLn :: s -> IO ()
+
+instance PutStr String where
+  putStr   = Prelude.putStr
+  putStrLn = Prelude.putStrLn
+
+instance PutStr BS.ByteString where
+  putStr   = BS.putStr
+  putStrLn = B8.putStrLn
+
+instance PutStr LBS.ByteString where
+  putStr   = LBS.putStr
+  putStrLn = LB8.putStrLn
 
 class Interact s where
   interact :: (s -> s) -> IO ()

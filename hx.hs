@@ -1,9 +1,8 @@
 {-# LANGUAGE OverloadedStrings, TypeSynonymInstances, FlexibleInstances #-}
-import Prelude hiding (interact, filter)
+import Prelude hiding (interact, filter, putStr, putStrLn)
 import Data.Maybe
 import Data.Either (partitionEithers)
 import Data.Word
-import Data.String
 import Data.Monoid
 import Data.Scientific
 import Data.Binary
@@ -14,7 +13,6 @@ import qualified Data.RFC1751 as RFC1751
 import System.Environment
 import Control.Monad (unless)
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Char8 as B8
 
 import Network.Haskoin.Crypto
