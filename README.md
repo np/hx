@@ -45,6 +45,7 @@ Supported commands:
     hx ec-n                                   [0]
     hx ec-a                                   [0]
     hx ec-b                                   [0]
+    hx ec-inf                                 [0]
     hx ec-int-p <DECIMAL-INTEGER>             [0]
     hx ec-int-n <DECIMAL-INTEGER>             [0]
     hx ec-x     <HEX-POINT>                   [0]

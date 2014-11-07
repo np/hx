@@ -19,6 +19,7 @@ import Network.Haskoin.Crypto
 import Network.Haskoin.Internals (FieldP, FieldN, BigWord(BigWord), Point
                                  , curveP, curveN, curveG, integerA, integerB
                                  , getX, getY, addPoint, doublePoint, mulPoint
+                                 , makeInfPoint
                                  , OutPoint(OutPoint), Tx(..), Script
                                  , SigHash(SigAll), TxSignature(TxSignature)
                                  , TxIn(..)
@@ -411,6 +412,7 @@ mainArgs ["ec-p"]                    = B8.putStrLn $ putHex (BigWord curveP   ::
 mainArgs ["ec-n"]                    = B8.putStrLn $ putHex (BigWord curveN   :: Word256)
 mainArgs ["ec-a"]                    = B8.putStrLn $ putHex (BigWord integerA :: Word256)
 mainArgs ["ec-b"]                    = B8.putStrLn $ putHex (BigWord integerB :: Word256)
+mainArgs ["ec-inf"]                  = B8.putStrLn $ putPoint makeInfPoint
 mainArgs ["ec-int-modp", x]          = B8.putStrLn $ putHex (BigWord (read x) :: FieldP)
 mainArgs ["ec-int-modn", x]          = B8.putStrLn $ putHex (BigWord (read x) :: FieldN)
 mainArgs ["ec-x", p]                 = B8.putStrLn . putHex . fromMaybe (error "invalid point") . getX $ getPoint p
@@ -472,6 +474,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx ec-n                                   [0]"
                              ,"hx ec-a                                   [0]"
                              ,"hx ec-b                                   [0]"
+                             ,"hx ec-inf                                 [0]"
                              ,"hx ec-int-p <DECIMAL-INTEGER>             [0]"
                              ,"hx ec-int-n <DECIMAL-INTEGER>             [0]"
                              ,"hx ec-x     <HEX-POINT>                   [0]"
