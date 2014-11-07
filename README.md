@@ -56,6 +56,7 @@ Supported commands:
     hx bip39-seed <PASSPHRASE>                [0]
     hx rfc1751-key                            [0]
     hx rfc1751-mnemonic                       [0]
+    hx brainwallet <PASSPHRASE>               [0]
     hx encode-hex                             [0]
     hx decode-hex                             [0]
     hx ripemd-hash

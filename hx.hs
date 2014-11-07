@@ -297,6 +297,18 @@ hx_rfc1751_mnemonic = B8.pack
                     . fromMaybe (error "invalid RFC1751 128 bits key") . RFC1751.keyToMnemonic
                     . decodeHex "128 bits key"
 
+brainwallet :: BS -> BS
+brainwallet = encodeBase58 . wrapBS 128 . hash256BS
+
+hx_brainwallet :: [String] -> BS
+hx_brainwallet [x]           = brainwallet . B8.pack $ x
+hx_brainwallet []            = error . brainwallet_usage $ "too few arguments"
+hx_brainwallet (x@('-':_):_) = error . brainwallet_usage $ "unexpected argument, " ++ show x
+hx_brainwallet _             = error . brainwallet_usage $ "too many arguments"
+
+brainwallet_usage :: String -> String
+brainwallet_usage msg = unlines [msg, "Usage: hx brainwallet <PASSPHRASE>"]
+
 -- set-input FILENAME N SIGNATURE_AND_PUBKEY_SCRIPT
 hx_set_input :: FilePath -> String -> String -> IO ()
 hx_set_input file index script =
@@ -436,6 +448,7 @@ mainArgs ["satoshi", x]              = putStrLn $ hx_satoshi x
 mainArgs ["rfc1751-key"]             = interactLn hx_rfc1751_key
 mainArgs ["rfc1751-mnemonic"]        = interactLn hx_rfc1751_mnemonic
 mainArgs ["mnemonic"]                = interactLn hx_mnemonic
+mainArgs ("brainwallet":args)        = putStrLn $ hx_brainwallet args
 mainArgs ("mktx":file:args)          = BS.writeFile file $ hx_mktx args
 mainArgs ["sign-input",f,i,s]        = hx_sign_input f i s
 mainArgs ["set-input",f,i,s]         = hx_set_input f i s
@@ -499,6 +512,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx bip39-seed <PASSPHRASE>                [0]"
                              ,"hx rfc1751-key                            [0]"
                              ,"hx rfc1751-mnemonic                       [0]"
+                             ,"hx brainwallet <PASSPHRASE>               [0]"
                              ,"hx encode-hex                             [0]"
                              ,"hx decode-hex                             [0]"
                              ,"hx ripemd-hash"
