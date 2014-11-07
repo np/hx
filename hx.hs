@@ -66,13 +66,13 @@ getFieldN = do
   return $ fromInteger i
 
 decodeBase58E :: BS -> BS
-decodeBase58E = fromMaybe (error "invalid base58 encoding") . decodeBase58 . ignoreSpaces
+decodeBase58E = fromMaybe (error "invalid base58 encoding") . decodeBase58 . ignoreSpacesBS
 
 xPrvImportE :: String -> XPrvKey
-xPrvImportE = fromMaybe (error "invalid extended private key") . xPrvImport . ignoreSpaces
+xPrvImportE = fromMaybe (error "invalid extended private key") . xPrvImport . ignoreSpacesS
 
 xPubImportE :: String -> XPubKey
-xPubImportE = fromMaybe (error "invalid extended public key") . xPubImport . ignoreSpaces
+xPubImportE = fromMaybe (error "invalid extended public key") . xPubImport . ignoreSpacesS
 
 data XKey = XPub XPubKey | XPrv XPrvKey
 
@@ -83,7 +83,7 @@ xKeyImport s
   | otherwise             = Nothing
 
 xKeyImportE :: String -> XKey
-xKeyImportE = fromMaybe (error "invalid extended public or private key") . xKeyImport . ignoreSpaces
+xKeyImportE = fromMaybe (error "invalid extended public or private key") . xKeyImport . ignoreSpacesS
 
 pubXKey :: XKey -> XPubKey
 pubXKey (XPub k) = k
@@ -132,7 +132,7 @@ derivePubPath ('/':xs) = goIndex $ span isDigit xs
 derivePubPath _ = error "malformed path"
 
 fromWIFE :: String -> PrvKey
-fromWIFE = fromMaybe (error "invalid WIF private key") . fromWIF . ignoreSpaces
+fromWIFE = fromMaybe (error "invalid WIF private key") . fromWIF . ignoreSpacesS
 
 base58ToAddrE :: String -> Address
 base58ToAddrE = fromMaybe (error "invalid bitcoin address") . base58ToAddr

@@ -2,7 +2,7 @@
 module Utils where
 
 import qualified Prelude as Prelude
-import Prelude hiding (interact, filter, putStr)
+import Prelude hiding (interact, putStr)
 import Data.String
 import Data.Monoid
 import Data.Binary
@@ -36,16 +36,7 @@ instance Hex BS where
   decodeHex msg s
     | BS.null rest = s'
     | otherwise    = error $ msg ++ ": invalid hex encoding"
-    where (s',rest) = B16.decode (ignoreSpaces s)
-
-class Filter s where
-  filter :: (Char -> Bool) -> s -> s
-
-instance Filter String where
-  filter = Prelude.filter
-
-instance Filter BS where
-  filter = B8.filter
+    where (s',rest) = B16.decode (ignoreSpacesBS s)
 
 class PutStr s where
   putStr   :: s -> IO ()
@@ -75,8 +66,11 @@ instance Interact BS.ByteString where
 putLn :: (IsString s, Monoid s) => s -> s
 putLn = (<> "\n")
 
-ignoreSpaces :: Filter s => s -> s
-ignoreSpaces  = filter $ not . isSpace
+ignoreSpacesS :: String -> String
+ignoreSpacesS = filter $ not . isSpace
+
+ignoreSpacesBS :: BS -> BS
+ignoreSpacesBS = B8.filter $ not . isSpace
 
 interactLn :: (IsString s, Monoid s, Interact s) => (s -> s) -> IO ()
 interactLn f = interact $ putLn . f
