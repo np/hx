@@ -88,9 +88,10 @@ interactHex :: (BS -> BS) -> IO ()
 interactHex f = interact (withHex f :: BS -> BS)
 
 interactArgs :: (Interact s, PutStr s, IsString s, Eq s) => ([s] -> s) -> [s] -> IO ()
-interactArgs f xs
-  | "-" `elem` xs = interact (\s -> f $ map (subst ("-", s)) xs)
-  | otherwise     = putStr (f xs)
+interactArgs f xs = case length (filter (=="-") xs) of
+  0 -> putStr (f xs)
+  1 -> interact (\s -> f $ map (subst ("-", s)) xs)
+  n -> error $ "Using '-' to read from standard input can be used only once, not " ++ show n ++ " times."
 
 interactArgsLn :: (Interact s, PutStr s, IsString s, Eq s, Monoid s) => ([s] -> s) -> [s] -> IO ()
 interactArgsLn f xs = interactArgs (putLn . f) xs
