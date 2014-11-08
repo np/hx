@@ -80,10 +80,6 @@ getFieldN = do
   unless (i < curveN) (fail $ "Get: Integer not in FieldN: " ++ show i)
   return $ fromInteger i
 
--- TODO do something better than 'read' to parse the index
-parseWord32 :: String -> Word32
-parseWord32 = read
-
 getHexN :: Hex s => s -> FieldN
 getHexN = runGet' getFieldN . decodeHex "field number modulo N"
 
@@ -154,7 +150,9 @@ derivePrvPath ('/':xs) = goIndex $ span isDigit xs
   where
   goIndex ([], _)       = error "derivePrvPath: empty path segment"
   goIndex (ys, '\'':zs) = derivePrvPath zs . flip primeSubKeyE (read ys)
+                        {- This read works because (all isDigit ys && not (null ys)) holds -}
   goIndex (ys, zs)      = derivePrvPath zs . flip prvSubKeyE   (read ys)
+                        {- This read works because (all isDigit ys && not (null ys)) holds -}
 derivePrvPath _ = error "malformed path"
 
 derivePubPath :: String -> XPubKey -> XPubKey
@@ -164,6 +162,7 @@ derivePubPath ('/':xs) = goIndex $ span isDigit xs
   goIndex ([], _)     = error "derivePubPath: empty path segment"
   goIndex (_, '\'':_) = error "derivePubPath: hardened subkeys are inaccessible from extended public keys"
   goIndex (ys, zs)    = derivePubPath zs . flip pubSubKeyE (read ys)
+                        {- This read works because (all isDigit ys && not (null ys)) holds -}
 derivePubPath _ = error "malformed path"
 
 fromWIFE :: String -> PrvKey
@@ -182,10 +181,10 @@ pubSubKeyE :: XPubKey -> Word32 -> XPubKey
 pubSubKeyE k = fromMaybe (error "failed to derive public sub key") . pubSubKey k
 
 readOutPoint :: String -> OutPoint
-readOutPoint xs = OutPoint (getHexLE "transaction hash" ys) (read zs) where (ys,zs) = splitOn ':' xs
+readOutPoint xs = OutPoint (getHexLE "transaction hash" ys) (parseWord32 "output point index" zs) where (ys,zs) = splitOn ':' xs
 
 readOutput :: String -> (String,Word64)
-readOutput xs = (ys, read zs) where (ys,zs) = splitOn ':' xs
+readOutput xs = (ys, parseWord64 "output index" zs) where (ys,zs) = splitOn ':' xs
 
 mktx_args :: [String] -> [Either OutPoint (String,Word64)]
 mktx_args [] = []
@@ -333,7 +332,7 @@ hx_base58_decode = encodeHex . decodeBase58E
 
 ver_args :: String -> [String] -> BS -> BS
 ver_args _   []  = id
-ver_args _   [x] = BS.cons (read x)
+ver_args _   [x] = BS.cons (parseWord8 "version byte" x)
 ver_args msg _   = error msg
 
 hx_base58check_encode :: Hex s => [String] -> s -> BS
@@ -381,7 +380,7 @@ brainwallet_usage msg = unlines [msg, "Usage: hx brainwallet <PASSPHRASE>"]
 hx_set_input :: FilePath -> String -> String -> IO ()
 hx_set_input file index script =
   do tx <- readTxFile file
-     B8.putStrLn . putHex $ hx_set_input' (read index) (decodeHex "script" script) tx
+     B8.putStrLn . putHex $ hx_set_input' (parseInt "input index" index) (decodeHex "script" script) tx
 
 hx_set_input' :: Int -> BS.ByteString -> Tx -> Tx
 hx_set_input' i si tx = tx{ txIn = updateIndex i (txIn tx) f }
@@ -396,13 +395,13 @@ hx_validsig :: FilePath -> String -> String -> String -> IO ()
 hx_validsig file i s sig =
   do tx <- readTxFile file
      interactLn $ putSuccess'
-                . hx_validsig' tx (read i) (getHex "script" s) (getTxSig sig)
+                . hx_validsig' tx (parseInt "input index" i) (getHex "script" s) (getTxSig sig)
                 . getPubKey
 
 hx_sign_input :: FilePath -> String -> String -> IO ()
 hx_sign_input file index script_code =
   do tx <- readTxFile file
-     interactLn $ putTxSig . hx_sign_input' tx (read index) (getHex "script" script_code) . fromWIFE
+     interactLn $ putTxSig . hx_sign_input' tx (parseInt "input index" index) (getHex "script" script_code) . fromWIFE
 
 -- The pure and typed counter part of hx_sign_input
 hx_sign_input' :: Tx -> Int -> Script -> PrvKey -> TxSignature
@@ -464,11 +463,11 @@ hx_ec_add_modn [x, y] = putHex $ getHexN x + getHexN y
 hx_ec_add_modn _      = error "Usage: hx ec-add-modn <HEX-FIELDN> <HEX-FIELDN>"
 
 hx_ec_int_modp :: [String] -> String
-hx_ec_int_modp [x] = putHex (BigWord (read x) :: FieldP)
+hx_ec_int_modp [x] = putHex (BigWord (readDigits "integer mod p" x) :: FieldP)
 hx_ec_int_modp _   = error "Usage: hx ec-int-modp <DECIMAL-INTEGER>"
 
 hx_ec_int_modn :: [String] -> String
-hx_ec_int_modn [x] = putHex (BigWord (read x) :: FieldN)
+hx_ec_int_modn [x] = putHex (BigWord (readDigits "integer mod n" x) :: FieldN)
 hx_ec_int_modn _   = error "Usage: hx ec-int-modn <DECIMAL-INTEGER>"
 
 hx_ec_x :: Hex s => [s] -> s
@@ -487,10 +486,10 @@ mainArgs ["secret-to-wif"]           = interactLn hx_secret_to_wif
 mainArgs ["compress"]                = interactLn hx_compress
 mainArgs ["uncompress"]              = interactLn hx_uncompress
 mainArgs ["hd-priv"]                 = interactLn $ hx_hd_priv   Nothing
-mainArgs ["hd-priv", i]              = interactLn . hx_hd_priv $ Just (prvSubKeyE,   parseWord32 i)
-mainArgs ["hd-priv", "--hard", i]    = interactLn . hx_hd_priv $ Just (primeSubKeyE, parseWord32 i)
+mainArgs ["hd-priv", i]              = interactLn . hx_hd_priv $ Just (prvSubKeyE,   parseWord32 "hd-priv index" i)
+mainArgs ["hd-priv", "--hard", i]    = interactLn . hx_hd_priv $ Just (primeSubKeyE, parseWord32 "hd-priv index" i)
 mainArgs ["hd-pub"]                  = interactLn $ hx_hd_pub    Nothing
-mainArgs ["hd-pub", i]               = interactLn . hx_hd_pub  . Just $ parseWord32 i
+mainArgs ["hd-pub", i]               = interactLn . hx_hd_pub  . Just $ parseWord32 "hd-pub index" i
 mainArgs ["hd-path", p]              = interactLn $ hx_hd_path p
 mainArgs ["hd-to-wif"]               = interactLn hx_hd_to_wif
 mainArgs ["hd-to-pubkey"]            = interactLn hx_hd_to_pubkey

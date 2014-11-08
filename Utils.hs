@@ -6,7 +6,7 @@ import Prelude hiding (interact, putStr)
 import Data.String
 import Data.Monoid
 import Data.Binary
-import Data.Char (isSpace)
+import Data.Char (isSpace,isDigit)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Lazy.Char8 as LB8
@@ -72,6 +72,23 @@ instance Interact LBS.ByteString where
 
 putLn :: (IsString s, Monoid s) => s -> s
 putLn = (<> "\n")
+
+showB8 :: Show a => a -> BS
+showB8 = B8.pack . show
+
+readDigits :: Read a => String -> String -> a
+readDigits  msg s | all isDigit s = read s
+                  | otherwise     = error $ "Invalid number containing non digits (while reading " <> msg <> ")"
+
+parseInt    :: String -> String -> Int
+parseWord8  :: String -> String -> Word8
+parseWord32 :: String -> String -> Word32
+parseWord64 :: String -> String -> Word64
+
+parseInt    = readDigits
+parseWord8  = readDigits
+parseWord32 = readDigits
+parseWord64 = readDigits
 
 ignoreSpacesS :: String -> String
 ignoreSpacesS = filter $ not . isSpace
