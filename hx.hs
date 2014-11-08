@@ -17,7 +17,7 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
 
 import Network.Haskoin.Crypto
-import Network.Haskoin.Internals (FieldP, FieldN, BigWord(BigWord), Point
+import Network.Haskoin.Internals (FieldP, FieldN, getBigWordInteger, Point
                                  , curveP, curveN, curveG, integerA, integerB
                                  , getX, getY, addPoint, doublePoint, mulPoint
                                  , makeInfPoint
@@ -76,7 +76,7 @@ instance Compress Key where
 -- Non DER
 getFieldN :: Get FieldN
 getFieldN = do
-  (BigWord i) <- get :: Get Word256
+  i <- getBigWordInteger <$> (get :: Get Word256)
   unless (i < curveN) (fail $ "Get: Integer not in FieldN: " ++ show i)
   return $ fromInteger i
 
@@ -476,11 +476,11 @@ hx_ec_add_modn [x, y] = putHexN $ getHexN x + getHexN y
 hx_ec_add_modn _      = error "Usage: hx ec-add-modn <HEX-FIELDN> <HEX-FIELDN>"
 
 hx_ec_int_modp :: [String] -> String
-hx_ec_int_modp [x] = putHexP (BigWord (readDigits "integer mod p" x))
+hx_ec_int_modp [x] = putHexP (fromInteger (readDigits "integer mod p" x))
 hx_ec_int_modp _   = error "Usage: hx ec-int-modp <DECIMAL-INTEGER>"
 
 hx_ec_int_modn :: [String] -> String
-hx_ec_int_modn [x] = putHexN (BigWord (readDigits "integer mod n" x))
+hx_ec_int_modn [x] = putHexN (fromInteger (readDigits "integer mod n" x))
 hx_ec_int_modn _   = error "Usage: hx ec-int-modn <DECIMAL-INTEGER>"
 
 hx_ec_x :: Hex s => [s] -> s
@@ -537,10 +537,10 @@ mainArgs ("ec-tweak-add":args)       = interactArgsLn hx_ec_tweak_add args
 mainArgs ("ec-add-modp":args)        = interactArgsLn hx_ec_add_modp  args
 mainArgs ("ec-add-modn":args)        = interactArgsLn hx_ec_add_modn  args
 mainArgs ["ec-g"]                    = B8.putStrLn $ putPoint curveG
-mainArgs ["ec-p"]                    = B8.putStrLn $ putHex256 (BigWord curveP  )
-mainArgs ["ec-n"]                    = B8.putStrLn $ putHex256 (BigWord curveN  )
-mainArgs ["ec-a"]                    = B8.putStrLn $ putHex256 (BigWord integerA)
-mainArgs ["ec-b"]                    = B8.putStrLn $ putHex256 (BigWord integerB)
+mainArgs ["ec-p"]                    = B8.putStrLn $ putHex256 (fromInteger curveP  )
+mainArgs ["ec-n"]                    = B8.putStrLn $ putHex256 (fromInteger curveN  )
+mainArgs ["ec-a"]                    = B8.putStrLn $ putHex256 (fromInteger integerA)
+mainArgs ["ec-b"]                    = B8.putStrLn $ putHex256 (fromInteger integerB)
 mainArgs ["ec-inf"]                  = B8.putStrLn $ putPoint makeInfPoint
 mainArgs ("ec-int-modp":args)        = interactArgsLn hx_ec_int_modp args
 mainArgs ("ec-int-modn":args)        = interactArgsLn hx_ec_int_modn args
