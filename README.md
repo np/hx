@@ -67,6 +67,7 @@ Supported commands:
     hx ripemd160                              [0]
     hx hash160                                [0]
     hx hash256                                [0]
+    hx chksum32                               [0]
 
     [0]: Not available in sx
     [1]: `hx showtx` is always using JSON output,

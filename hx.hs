@@ -516,6 +516,7 @@ mainArgs ["sha256"]                  = interactHex hash256BS
 mainArgs ["sha1"]                    = interactHex hashSha1BS
 mainArgs ["hash256"]                 = interactHex $ hash256BS . hash256BS
 mainArgs ["hash160"]                 = interactHex $ hash160BS . hash256BS
+mainArgs ["chksum32"]                = interactHex $ encode' . chksum32
 mainArgs ("ec-double":args)          = interactArgsLn hx_ec_double    args
 mainArgs ("ec-add":args)             = interactArgsLn hx_ec_add       args
 mainArgs ("ec-multiply":args)        = interactArgsLn hx_ec_multiply  args
@@ -611,6 +612,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx sha1                                   [0]"
                              ,"hx hash160                                [0]"
                              ,"hx hash256                                [0]"
+                             ,"hx chksum32                               [0]"
                              ,""
                              ,"[0]: Not available in sx"
                              ,"[1]: `hx showtx` is always using JSON output,"
