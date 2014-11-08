@@ -58,6 +58,10 @@ instance Compress PubKey where
   uncompress (PubKey k)  = PubKeyU k
   uncompress k@PubKeyU{} = k
 
+instance Compress Key where
+  compress = mapKey compress compress
+  uncompress = mapKey uncompress uncompress
+
 -- Non DER
 getFieldN :: Get FieldN
 getFieldN = do
@@ -197,10 +201,10 @@ keyAddrBase58 :: Key -> String
 keyAddrBase58 = addrToBase58 . keyAddr
 
 hx_compress :: String -> String
-hx_compress = putKey . mapKey compress compress . getKey
+hx_compress = putKey . compress . getKey
 
 hx_uncompress :: String -> String
-hx_uncompress = putKey . mapKey uncompress uncompress . getKey
+hx_uncompress = putKey . uncompress . getKey
 
 hx_mktx :: Hex s => [String] -> s
 hx_mktx args = putHex . either error id . uncurry buildAddrTx
