@@ -1,8 +1,8 @@
 #!/bin/bash
 
-testname=pubkey-uncompressed.t
+testname=pubkey-compressed-of-uncompressed-pubkey.t
 command=hx
-args=( pubkey )
+args=( pubkey --compressed )
 exit_code=0
 stdin_file=stdin
 stdout_file=stdout

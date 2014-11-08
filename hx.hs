@@ -241,8 +241,20 @@ hx_mktx :: Hex s => [String] -> s
 hx_mktx args = putHex . either error id . uncurry buildAddrTx
              . partitionEithers $ mktx_args args
 
-hx_pubkey :: Hex s => String -> s
-hx_pubkey = putHex . derivePubKey . fromWIFE
+hx_pubkey :: Hex s => [String] -> String -> s
+hx_pubkey args = putHex . compressIf . pubKey . compat . getKey
+  where compressIf :: PubKey -> PubKey
+        compressIf = case args of
+          [] -> id
+          [o] | map toLower o `elem` ["1","true","yes","--compressed","-c"]   -> compress
+              | map toLower o `elem` ["0","false","no","--uncompressed","-u"] -> uncompress
+          _ -> error "Usage: hx pubkey [--uncompressed|--compressed]"
+
+        -- This is for compatibility with `sx', namely if one gives a
+        -- compressed public key with no compression argument the key
+        -- is uncompressed.
+        -- I would prefer to do nothing here instead.
+        compat = mapKey id uncompress
 
 hx_addr :: String -> String
 hx_addr = keyAddrBase58 . getKey
@@ -448,7 +460,7 @@ hx_ec_y [p] = putHex . fromMaybe (error "invalid point") . getY $ getPoint p
 hx_ec_y _   = error "Usage: hx ec-y <HEX-POINT>"
 
 mainArgs :: [String] -> IO ()
-mainArgs ["pubkey"]                  = interactLn hx_pubkey
+mainArgs ("pubkey":args)             = interactLn $ hx_pubkey args
 mainArgs ["addr"]                    = interactLn hx_addr
 mainArgs ["wif-to-secret"]           = interactLn hx_wif_to_secret
 mainArgs ["secret-to-wif"]           = interactLn hx_secret_to_wif
@@ -517,7 +529,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"Supported commands:"
                              ,""
-                             ,"hx pubkey"
+                             ,"hx pubkey [--compressed|--uncompressed]"
                              ,"hx addr"
                              ,"hx wif-to-secret"
                              ,"hx secret-to-wif"

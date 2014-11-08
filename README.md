@@ -5,7 +5,7 @@ Bitcoin CLI tools: Haskell port of [Sx](https://github.com/spesmilo/sx) using [H
 
 Supported commands:
 
-    hx pubkey
+    hx pubkey [--compressed|--uncompressed]
     hx addr
     hx wif-to-secret
     hx secret-to-wif
