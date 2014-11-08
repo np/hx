@@ -177,3 +177,12 @@ interactArgsLn f xs = interactArgs (putLn . f) xs
 splitOn :: Char -> String -> (String, String)
 splitOn c xs = (ys, tail zs)
   where (ys,zs) = span (/= c) xs
+
+decodeHexBytes :: Hex s => String -> Int -> s -> BS
+decodeHexBytes msg b s
+  | l == b    = x
+  | otherwise = error . unwords $ ["invalid", msg, "(should be"
+                                  ,show (8 * b), "bits and not"
+                                  ,show (8 * l), "bits)"]
+  where x = decodeHex msg s
+        l = BS.length x
