@@ -35,16 +35,6 @@ import Mnemonic (hex_to_mn, mn_to_hex)
 import DetailedTx (txDetailedJSON)
 import Utils
 
-show01 :: IsString s => Bool -> s
-show01 True  = "1"
-show01 False = "0"
-
-read01 :: String -> Bool
-read01 s
-  | map toLower s `elem` ["0","false","no"] = False
-  | map toLower s `elem` ["1","true","yes"] = True
-  | otherwise = error $ "Expect 0, false, no, 1, true, or yes, not " ++ show s
-
 readTxFile :: FilePath -> IO Tx
 readTxFile file = getHex "transaction" <$> BS.readFile file
 

@@ -6,7 +6,7 @@ import Prelude hiding (interact, putStr)
 import Data.String
 import Data.Monoid
 import Data.Binary
-import Data.Char (isSpace,isDigit)
+import Data.Char (isSpace,isDigit,toLower)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Lazy.Char8 as LB8
@@ -93,6 +93,16 @@ parseInt    = readDigits
 parseWord8  = readDigits
 parseWord32 = readDigits
 parseWord64 = readDigits
+
+show01 :: IsString s => Bool -> s
+show01 True  = "1"
+show01 False = "0"
+
+read01 :: String -> Bool
+read01 s
+  | map toLower s `elem` ["0","false","no"] = False
+  | map toLower s `elem` ["1","true","yes"] = True
+  | otherwise = error $ "Expect 0, false, no, 1, true, or yes, not " ++ show s
 
 ignoreSpacesS :: String -> String
 ignoreSpacesS = filter $ not . isSpace
