@@ -80,11 +80,24 @@ getFieldN = do
   unless (i < curveN) (fail $ "Get: Integer not in FieldN: " ++ show i)
   return $ fromInteger i
 
+-- Non DER
+putFieldN :: FieldN -> Put
+putFieldN = (put :: Word256 -> Put) . fromIntegral
+
 getHexN :: Hex s => s -> FieldN
 getHexN = runGet' getFieldN . decodeHex "field number modulo N"
 
+putHexN :: Hex s => FieldN -> s
+putHexN = encodeHex . runPut' . putFieldN
+
 getHexP :: Hex s => s -> FieldP
 getHexP = getHex "field number modulo P"
+
+putHexP :: Hex s => FieldP -> s
+putHexP = putHex
+
+putHex256 :: Hex s => Word256 -> s
+putHex256 = putHex
 
 -- Little endian version of getHex
 getHexLE :: (Binary a, Hex s) => String -> s -> a
@@ -455,27 +468,27 @@ hx_ec_tweak_add [x, p] = putPoint $ addPoint (mulPoint (getHexN x) curveG) (getP
 hx_ec_tweak_add _      = error "Usage: hx ec-tweak-add <HEX-FIELDN> <HEX-POINT>"
 
 hx_ec_add_modp :: Hex s => [s] -> s
-hx_ec_add_modp [x, y] = putHex $ getHexP x + getHexP y
+hx_ec_add_modp [x, y] = putHexP $ getHexP x + getHexP y
 hx_ec_add_modp _      = error "Usage: hx ec-add-modp <HEX-FIELDP> <HEX-FIELDP>"
 
 hx_ec_add_modn :: Hex s => [s] -> s
-hx_ec_add_modn [x, y] = putHex $ getHexN x + getHexN y
+hx_ec_add_modn [x, y] = putHexN $ getHexN x + getHexN y
 hx_ec_add_modn _      = error "Usage: hx ec-add-modn <HEX-FIELDN> <HEX-FIELDN>"
 
 hx_ec_int_modp :: [String] -> String
-hx_ec_int_modp [x] = putHex (BigWord (readDigits "integer mod p" x) :: FieldP)
+hx_ec_int_modp [x] = putHexP (BigWord (readDigits "integer mod p" x))
 hx_ec_int_modp _   = error "Usage: hx ec-int-modp <DECIMAL-INTEGER>"
 
 hx_ec_int_modn :: [String] -> String
-hx_ec_int_modn [x] = putHex (BigWord (readDigits "integer mod n" x) :: FieldN)
+hx_ec_int_modn [x] = putHexN (BigWord (readDigits "integer mod n" x))
 hx_ec_int_modn _   = error "Usage: hx ec-int-modn <DECIMAL-INTEGER>"
 
 hx_ec_x :: Hex s => [s] -> s
-hx_ec_x [p] = putHex . fromMaybe (error "invalid point") . getX $ getPoint p
+hx_ec_x [p] = putHexP . fromMaybe (error "invalid point") . getX $ getPoint p
 hx_ec_x _   = error "Usage: hx ec-x <HEX-POINT>"
 
 hx_ec_y :: Hex s => [s] -> s
-hx_ec_y [p] = putHex . fromMaybe (error "invalid point") . getY $ getPoint p
+hx_ec_y [p] = putHexP . fromMaybe (error "invalid point") . getY $ getPoint p
 hx_ec_y _   = error "Usage: hx ec-y <HEX-POINT>"
 
 mainArgs :: [String] -> IO ()
@@ -524,10 +537,10 @@ mainArgs ("ec-tweak-add":args)       = interactArgsLn hx_ec_tweak_add args
 mainArgs ("ec-add-modp":args)        = interactArgsLn hx_ec_add_modp  args
 mainArgs ("ec-add-modn":args)        = interactArgsLn hx_ec_add_modn  args
 mainArgs ["ec-g"]                    = B8.putStrLn $ putPoint curveG
-mainArgs ["ec-p"]                    = B8.putStrLn $ putHex (BigWord curveP   :: Word256)
-mainArgs ["ec-n"]                    = B8.putStrLn $ putHex (BigWord curveN   :: Word256)
-mainArgs ["ec-a"]                    = B8.putStrLn $ putHex (BigWord integerA :: Word256)
-mainArgs ["ec-b"]                    = B8.putStrLn $ putHex (BigWord integerB :: Word256)
+mainArgs ["ec-p"]                    = B8.putStrLn $ putHex256 (BigWord curveP  )
+mainArgs ["ec-n"]                    = B8.putStrLn $ putHex256 (BigWord curveN  )
+mainArgs ["ec-a"]                    = B8.putStrLn $ putHex256 (BigWord integerA)
+mainArgs ["ec-b"]                    = B8.putStrLn $ putHex256 (BigWord integerB)
 mainArgs ["ec-inf"]                  = B8.putStrLn $ putPoint makeInfPoint
 mainArgs ("ec-int-modp":args)        = interactArgsLn hx_ec_int_modp args
 mainArgs ("ec-int-modn":args)        = interactArgsLn hx_ec_int_modn args
