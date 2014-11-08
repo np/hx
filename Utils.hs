@@ -76,9 +76,13 @@ putLn = (<> "\n")
 showB8 :: Show a => a -> BS
 showB8 = B8.pack . show
 
-readDigits :: Read a => String -> String -> a
-readDigits  msg s | all isDigit s = read s
+strictReadDigits :: Read a => String -> String -> a
+strictReadDigits  msg s | all isDigit s = read s
                   | otherwise     = error $ "Invalid number containing non digits (while reading " <> msg <> ")"
+
+-- Same as strictReadDigits but ignore spaces in the input
+readDigits :: Read a => String -> String -> a
+readDigits  msg = strictReadDigits msg . ignoreSpacesS
 
 parseInt    :: String -> String -> Int
 parseWord8  :: String -> String -> Word8
