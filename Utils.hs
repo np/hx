@@ -3,15 +3,19 @@ module Utils where
 
 import qualified Prelude as Prelude
 import Prelude hiding (interact, putStr)
-import Data.String
-import Data.Monoid
+import Control.Monad (unless)
 import Data.Binary
 import Data.Char (isSpace,isDigit,toLower)
+import Data.Functor ((<$>))
+import Data.Monoid
+import Data.String
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Lazy.Char8 as LB8
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Base16 as B16
+import Network.Haskoin.Crypto
+import Network.Haskoin.Internals (FieldP, FieldN, getBigWordInteger, Point, curveN)
 import Network.Haskoin.Util
 
 subst :: Eq a => (a,a) -> a -> a
@@ -121,6 +125,42 @@ getHex msg = decode' . decodeHex msg
 
 withHex :: (Hex s, Hex s', Monoid s', IsString s') => (BS -> BS) -> s -> s'
 withHex f = putLn . encodeHex . f . decodeHex "input"
+
+-- Non DER
+getFieldN :: Get FieldN
+getFieldN = do
+  i <- getBigWordInteger <$> (get :: Get Word256)
+  unless (i < curveN) (fail $ "Get: Integer not in FieldN: " ++ show i)
+  return $ fromInteger i
+
+-- Non DER
+putFieldN :: FieldN -> Put
+putFieldN = (put :: Word256 -> Put) . fromIntegral
+
+getHexN :: Hex s => s -> FieldN
+getHexN = runGet' getFieldN . decodeHex "field number modulo N"
+
+putHexN :: Hex s => FieldN -> s
+putHexN = encodeHex . runPut' . putFieldN
+
+getHexP :: Hex s => s -> FieldP
+getHexP = getHex "field number modulo P"
+
+putHexP :: Hex s => FieldP -> s
+putHexP = putHex
+
+putHex256 :: Hex s => Word256 -> s
+putHex256 = putHex
+
+-- Little endian version of getHex
+getHexLE :: (Binary a, Hex s) => String -> s -> a
+getHexLE msg = decode' . BS.reverse . decodeHex (msg ++ " (little endian)")
+
+getPoint :: Hex s => s -> Point
+getPoint = pubKeyPoint . getHex "curve point"
+
+putPoint :: Hex s => Point -> s
+putPoint = putHex . PubKey
 
 interactHex :: (BS -> BS) -> IO ()
 interactHex f = interact (withHex f :: BS -> BS)

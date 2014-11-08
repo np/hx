@@ -2,23 +2,19 @@
 import Prelude hiding (interact, filter, putStr, putStrLn)
 import Data.Maybe
 import Data.Either (partitionEithers)
-import Data.String
 import Data.Word
 import Data.Monoid
 import Data.Scientific
-import Data.Binary
 import Data.Functor ((<$>))
 import Data.Char (isDigit,toLower)
 import Data.List (isPrefixOf)
 import qualified Data.RFC1751 as RFC1751
 import System.Environment
-import Control.Monad (unless)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
 
 import Network.Haskoin.Crypto
-import Network.Haskoin.Internals (FieldP, FieldN, getBigWordInteger, Point
-                                 , curveP, curveN, curveG, integerA, integerB
+import Network.Haskoin.Internals ( curveP, curveN, curveG, integerA, integerB
                                  , getX, getY, addPoint, doublePoint, mulPoint
                                  , makeInfPoint
                                  , OutPoint(OutPoint), Tx(..), Script
@@ -62,42 +58,6 @@ instance Compress PubKey where
 instance Compress Key where
   compress = mapKey compress compress
   uncompress = mapKey uncompress uncompress
-
--- Non DER
-getFieldN :: Get FieldN
-getFieldN = do
-  i <- getBigWordInteger <$> (get :: Get Word256)
-  unless (i < curveN) (fail $ "Get: Integer not in FieldN: " ++ show i)
-  return $ fromInteger i
-
--- Non DER
-putFieldN :: FieldN -> Put
-putFieldN = (put :: Word256 -> Put) . fromIntegral
-
-getHexN :: Hex s => s -> FieldN
-getHexN = runGet' getFieldN . decodeHex "field number modulo N"
-
-putHexN :: Hex s => FieldN -> s
-putHexN = encodeHex . runPut' . putFieldN
-
-getHexP :: Hex s => s -> FieldP
-getHexP = getHex "field number modulo P"
-
-putHexP :: Hex s => FieldP -> s
-putHexP = putHex
-
-putHex256 :: Hex s => Word256 -> s
-putHex256 = putHex
-
--- Little endian version of getHex
-getHexLE :: (Binary a, Hex s) => String -> s -> a
-getHexLE msg = decode' . BS.reverse . decodeHex (msg ++ " (little endian)")
-
-getPoint :: Hex s => s -> Point
-getPoint = pubKeyPoint . getHex "curve point"
-
-putPoint :: Hex s => Point -> s
-putPoint = putHex . PubKey
 
 decodeBase58E :: BS -> BS
 decodeBase58E = fromMaybe (error "invalid base58 encoding") . decodeBase58 . ignoreSpacesBS
@@ -264,12 +224,10 @@ hx_addr = keyAddrBase58 . getKey
 hx_wif_to_secret :: Hex s => String -> s
 hx_wif_to_secret = encodeHex . runPut' . putPrvKey . fromWIFE
 
-prvFromSecret :: BS -> PrvKey
-prvFromSecret = fromMaybe (error "invalid private key")
-              . makePrvKey . bsToInteger
-
 hx_secret_to_wif :: String -> String
-hx_secret_to_wif = toWIF . prvFromSecret . decodeHex "private key"
+hx_secret_to_wif = toWIF . fromMaybe (error "invalid private key")
+                 . makePrvKey . bsToInteger
+                 . decodeHex "private key"
 
 hx_hd_to_wif :: String -> String
 hx_hd_to_wif = xPrvWIF . xPrvImportE
