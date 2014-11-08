@@ -505,6 +505,7 @@ mainArgs ["encode-addr", "--script"] = interactLn $ hx_encode_addr ScriptAddress
 mainArgs ["encode-addr"]             = interactLn $ hx_encode_addr PubKeyAddress
 mainArgs ["decode-addr"]             = interactLn hx_decode_addr
 mainArgs ["validaddr",address]       = B8.putStrLn $ hx_validaddr address
+mainArgs ["integer"]                 = interactLn $ showB8 . bsToInteger . decodeHex "input"
 mainArgs ["hex-encode"]              = interactLn encodeHex
 mainArgs ["hex-decode"]              = interact $ decodeHex "input"
 mainArgs ["encode-hex"]{-deprecated-}= interactLn encodeHex
@@ -601,6 +602,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx rfc1751-key                            [0]"
                              ,"hx rfc1751-mnemonic                       [0]"
                              ,"hx brainwallet <PASSPHRASE>               [0]"
+                             ,"hx integer                                [0]"
                              ,"hx hex-encode                             [0]"
                              ,"hx hex-decode                             [0]"
                              ,"hx ripemd-hash"
