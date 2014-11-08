@@ -69,6 +69,26 @@ getFieldN = do
   unless (i < curveN) (fail $ "Get: Integer not in FieldN: " ++ show i)
   return $ fromInteger i
 
+-- TODO do something better than 'read' to parse the index
+parseWord32 :: String -> Word32
+parseWord32 = read
+
+getHexN :: Hex s => s -> FieldN
+getHexN = runGet' getFieldN . decodeHex "field number modulo N"
+
+getHexP :: Hex s => s -> FieldP
+getHexP = getHex "field number modulo P"
+
+-- Little endian version of getHex
+getHexLE :: (Binary a, Hex s) => String -> s -> a
+getHexLE msg = decode' . BS.reverse . decodeHex (msg ++ " (little endian)")
+
+getPoint :: Hex s => s -> Point
+getPoint = pubKeyPoint . getHex "curve point"
+
+putPoint :: Hex s => Point -> s
+putPoint = putHex . PubKey
+
 decodeBase58E :: BS -> BS
 decodeBase58E = fromMaybe (error "invalid base58 encoding") . decodeBase58 . ignoreSpacesBS
 
@@ -375,26 +395,6 @@ wrapBS v s = checksum_encode (BS.cons v s)
 
 unwrapBS :: BS -> Maybe (Word8, BS)
 unwrapBS = BS.uncons . checksum_decode
-
--- TODO do something better than 'read' to parse the index
-parseWord32 :: String -> Word32
-parseWord32 = read
-
-getHexN :: Hex s => s -> FieldN
-getHexN = runGet' getFieldN . decodeHex "field number modulo N"
-
-getHexP :: Hex s => s -> FieldP
-getHexP = getHex "field number modulo P"
-
--- Little endian version of getHex
-getHexLE :: (Binary a, Hex s) => String -> s -> a
-getHexLE msg = decode' . BS.reverse . decodeHex (msg ++ " (little endian)")
-
-getPoint :: Hex s => s -> Point
-getPoint = pubKeyPoint . getHex "curve point"
-
-putPoint :: Hex s => Point -> s
-putPoint = putHex . PubKey
 
 hx_ec_double :: Hex s => [s] -> s
 hx_ec_double [p] = putPoint $ doublePoint (getPoint p)
