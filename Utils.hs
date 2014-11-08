@@ -38,6 +38,10 @@ instance Hex BS where
     | otherwise    = error $ msg ++ ": invalid hex encoding"
     where (s',rest) = B16.decode (ignoreSpacesBS s)
 
+instance Hex LBS.ByteString where
+  decodeHex msg = decodeHex msg . toStrictBS
+  encodeHex     = toLazyBS . encodeHex
+
 class PutStr s where
   putStr   :: s -> IO ()
   putStrLn :: s -> IO ()
@@ -62,6 +66,9 @@ instance Interact String where
 
 instance Interact BS.ByteString where
   interact = BS.interact
+
+instance Interact LBS.ByteString where
+  interact = LBS.interact
 
 putLn :: (IsString s, Monoid s) => s -> s
 putLn = (<> "\n")
