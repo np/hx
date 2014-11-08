@@ -159,7 +159,7 @@ fromWIFE :: String -> PrvKey
 fromWIFE = fromMaybe (error "invalid WIF private key") . fromWIF . ignoreSpacesS
 
 base58ToAddrE :: String -> Address
-base58ToAddrE = fromMaybe (error "invalid bitcoin address") . base58ToAddr
+base58ToAddrE = fromMaybe (error "invalid bitcoin address") . base58ToAddr . ignoreSpacesS
 
 prvSubKeyE :: XPrvKey -> Word32 -> XPrvKey
 prvSubKeyE k = fromMaybe (error "failed to derive private sub key") . prvSubKey k
