@@ -331,8 +331,15 @@ hx_base58_encode = encodeBase58 . decodeHex "input"
 hx_base58_decode :: Hex s => BS -> s
 hx_base58_decode = encodeHex . decodeBase58E
 
-hx_base58check_encode :: Hex s => s -> BS
-hx_base58check_encode = encodeBase58Check . decodeHex "input"
+ver_args :: String -> [String] -> BS -> BS
+ver_args _   []  = id
+ver_args _   [x] = BS.cons (read x)
+ver_args msg _   = error msg
+
+hx_base58check_encode :: Hex s => [String] -> s -> BS
+hx_base58check_encode args = encodeBase58Check
+                           . ver_args "Usage: hx base58check-encode [<VERSION-BYTE>]" args
+                           . decodeHex "input"
 
 hx_base58check_decode :: Hex s => BS -> s
 hx_base58check_decode = encodeHex
@@ -493,7 +500,7 @@ mainArgs ["bip39-hex"]               = interactLn hx_bip39_hex
 mainArgs ["bip39-seed", pass]        = interactLn $ hx_bip39_seed pass
 mainArgs ["base58-encode"]           = interactLn hx_base58_encode
 mainArgs ["base58-decode"]           = interactLn hx_base58_decode
-mainArgs ["base58check-encode"]      = interactLn hx_base58check_encode
+mainArgs ("base58check-encode":args) = interactLn $ hx_base58check_encode args
 mainArgs ["base58check-decode"]      = interactLn hx_base58check_decode
 mainArgs ["encode-addr", "--script"] = interactLn $ hx_encode_addr ScriptAddress
 mainArgs ["encode-addr"]             = interactLn $ hx_encode_addr PubKeyAddress
@@ -565,7 +572,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx hd-to-pubkey                           [0]"
                              ,"hx base58-encode"
                              ,"hx base58-decode"
-                             ,"hx base58check-encode"
+                             ,"hx base58check-encode [<VERSION-BYTE>]"
                              ,"hx base58check-decode"
                              ,"hx decode-addr"
                              ,"hx encode-addr"

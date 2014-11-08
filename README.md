@@ -28,7 +28,7 @@ Supported commands:
     hx hd-to-pubkey                           [0]
     hx base58-encode
     hx base58-decode
-    hx base58check-encode
+    hx base58check-encode [<VERSION-BYTE>]
     hx base58check-decode
     hx decode-addr
     hx encode-addr
