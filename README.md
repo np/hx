@@ -57,8 +57,8 @@ Supported commands:
     hx rfc1751-key                            [0]
     hx rfc1751-mnemonic                       [0]
     hx brainwallet <PASSPHRASE>               [0]
-    hx encode-hex                             [0]
-    hx decode-hex                             [0]
+    hx hex-encode                             [0]
+    hx hex-decode                             [0]
     hx ripemd-hash
     hx sha256
     hx sha1                                   [0]

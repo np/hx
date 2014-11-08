@@ -1,6 +1,6 @@
 #!/bin/bash
 
-testname=encode-hex.t
+testname=hex-encode.t
 command=hx
 args=( encode-hex )
 exit_code=0
