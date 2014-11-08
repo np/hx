@@ -1,0 +1,42 @@
+#!/bin/bash
+
+testname=sx-tuto-sig-pubkey-script.t
+command=hx
+args=( rawscript \[ 3045022008409cf7987b26746632d3ed5a8c9b3e47641543bdf495235949883e3eee0e980221009e24e8e61a4f1e7ead2b4fe3b9699610532a4d65720cde98c0ee4e3b92a8cbf901 \] \[ - \] )
+exit_code=0
+stdin_file=stdin
+stdout_file=stdout
+stderr_file=/dev/null
+sources=( )
+products=( )
+
+# Environment variables:
+env_vars=( )
+
+setup(){
+  : Perform here actions to be run before the tested program
+}
+
+munge(){
+  : Munge here the results of the tested program to ease the check
+}
+
+check(){
+  check_exit_code &&
+  check_stderr &&
+  check_stdout &&
+  check_products &&
+  : Perform here extra checks on the tested program
+}
+
+explain(){
+  explain_exit_code
+  explain_stdout
+  explain_stderr
+  explain_products
+  : Explain here more potential differences
+}
+
+teardown(){
+  : Undo here the actions of setup
+}
