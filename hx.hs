@@ -307,6 +307,13 @@ hx_btc, hx_satoshi :: String -> String
 hx_btc     = formatScientific Fixed (Just 8) . (/ one_btc_in_satoshi) . read
 hx_satoshi = formatScientific Fixed (Just 0) . (* one_btc_in_satoshi) . read
 
+putSuccess :: Bool -> BS
+putSuccess True  = "Status: Success"
+putSuccess False = "Status: Invalid"
+
+hx_validaddr :: String -> BS
+hx_validaddr = putSuccess . isJust . base58ToAddr
+
 hx_decode_addr :: Hex s => String -> s
 hx_decode_addr = putHex . getAddrHash . base58ToAddrE
 
@@ -535,6 +542,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"hx pubkey [--compressed|--uncompressed]"
                              ,"hx addr"
+                             ,"hx validaddr <ADDRESS>"
                              ,"hx wif-to-secret"
                              ,"hx secret-to-wif"
                              ,"hx compress                               [0]"

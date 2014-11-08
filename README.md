@@ -7,6 +7,7 @@ Supported commands:
 
     hx pubkey [--compressed|--uncompressed]
     hx addr
+    hx validaddr <ADDRESS>
     hx wif-to-secret
     hx secret-to-wif
     hx compress                               [0]
