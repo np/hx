@@ -402,10 +402,12 @@ hx_showscript :: String -> String
 hx_showscript = showDoc . prettyScript . getHex "script"
 
 hx_showtx :: [String] -> IO ()
+hx_showtx [] = interact $ txDetailedJSON . getHex "transaction"
+hx_showtx ["-"] = interact $ txDetailedJSON . getHex "transaction"
 hx_showtx [file] = putStr . txDetailedJSON =<< readTxFile file
 hx_showtx ("-j":xs) = hx_showtx xs
 hx_showtx ("--json":xs) = hx_showtx xs
-hx_showtx _ = error "Usage: hx showtx [-j|--json] <TXFILE>"
+hx_showtx _ = error "Usage: hx showtx [-j|--json] [<TXFILE>]"
 
 checksum_encode :: BS -> BS
 checksum_encode d = d <> encode' (chksum32 d)
