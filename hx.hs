@@ -311,6 +311,11 @@ putSuccess :: Bool -> BS
 putSuccess True  = "Status: Success"
 putSuccess False = "Status: Invalid"
 
+-- Just here to conform to `sx'
+putSuccess' :: Bool -> BS
+putSuccess' True = "Status: OK"
+putSuccess'  _   = "Status: Failed"
+
 hx_validaddr :: String -> BS
 hx_validaddr = putSuccess . isJust . base58ToAddr
 
@@ -383,12 +388,9 @@ hx_validsig' tx i out (TxSignature sig sh) pub =
 hx_validsig :: FilePath -> String -> String -> String -> IO ()
 hx_validsig file i s sig =
   do tx <- readTxFile file
-     interact $ putSuccess
-              . hx_validsig' tx (read i) (getHex "script" s) (getTxSig sig)
-              . getPubKey
-  where putSuccess :: Bool -> BS
-        putSuccess True = "Status: OK\n"
-        putSuccess  _   = "Status: Failed\n"
+     interactLn $ putSuccess'
+                . hx_validsig' tx (read i) (getHex "script" s) (getTxSig sig)
+                . getPubKey
 
 hx_sign_input :: FilePath -> String -> String -> IO ()
 hx_sign_input file index script_code =
