@@ -262,10 +262,12 @@ hx_addr = keyAddrBase58 . getKey
 hx_wif_to_secret :: Hex s => String -> s
 hx_wif_to_secret = encodeHex . runPut' . putPrvKey . fromWIFE
 
+prvFromSecret :: BS -> PrvKey
+prvFromSecret = fromMaybe (error "invalid private key")
+              . makePrvKey . bsToInteger
+
 hx_secret_to_wif :: String -> String
-hx_secret_to_wif = toWIF
-                 . fromMaybe (error "invalid private key") . makePrvKey
-                 . bsToInteger . decodeHex "private key"
+hx_secret_to_wif = toWIF . prvFromSecret . decodeHex "private key"
 
 hx_hd_to_wif :: String -> String
 hx_hd_to_wif = xPrvWIF . xPrvImportE
