@@ -303,7 +303,7 @@ hx_base58check_encode args = encodeBase58Check
 
 hx_base58check_decode :: [String] -> BS -> BS
 hx_base58check_decode args
-  | null args = wrap . BS.uncons . checksum_decode . decodeBase58E
+  | null args = wrap . BS.uncons . chksum32_decode . decodeBase58E
   | otherwise = error "Usage: hx base58check-decode"
   where wrap (Just (x,xs)) = encodeHex xs <> " " <> showB8 x
         wrap Nothing       = ""
@@ -387,11 +387,11 @@ hx_showtx ("-j":xs) = hx_showtx xs
 hx_showtx ("--json":xs) = hx_showtx xs
 hx_showtx _ = error "Usage: hx showtx [-j|--json] [<TXFILE>]"
 
-checksum_encode :: BS -> BS
-checksum_encode d = d <> encode' (chksum32 d)
+chksum32_encode :: BS -> BS
+chksum32_encode d = d <> encode' (chksum32 d)
 
-checksum_decode :: BS -> BS
-checksum_decode d | chksum32 pre == decode' post = pre
+chksum32_decode :: BS -> BS
+chksum32_decode d | chksum32 pre == decode' post = pre
                   | otherwise                    = error "checksum does not match"
   where (pre,post) = BS.splitAt (BS.length d - 4) d
 
