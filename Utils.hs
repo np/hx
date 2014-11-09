@@ -174,7 +174,15 @@ interactArgs f xs = case length (filter (=="-") xs) of
   n -> error $ "Using '-' to read from standard input can be used only once, not " ++ show n ++ " times."
 
 interactArgsLn :: (Interact s, PutStr s, IsString s, Eq s, Monoid s) => ([s] -> s) -> [s] -> IO ()
-interactArgsLn f xs = interactArgs (putLn . f) xs
+interactArgsLn = interactArgs . (putLn .)
+
+interactArg :: (Interact s, PutStr s, IsString s, Eq s) => String -> (s -> s) -> [s] -> IO ()
+interactArg msg f = interactArgs f'
+  where f' [x] = f x
+        f' _   = error $ "Too many arguments.\nUsage: " ++ msg
+
+interactArgLn :: (Interact s, PutStr s, IsString s, Eq s, Monoid s) => String -> (s -> s) -> [s] -> IO ()
+interactArgLn msg = interactArg msg . (putLn .)
 
 splitOn :: Char -> String -> (String, String)
 splitOn c xs = (ys, tail zs)

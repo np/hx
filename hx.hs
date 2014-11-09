@@ -505,17 +505,19 @@ mainArgs ("ec-int-modn":args)        = interactArgsLn hx_ec_int_modn args
 mainArgs ("ec-x":args)               = interactArgsLn hx_ec_x args
 mainArgs ("ec-y":args)               = interactArgsLn hx_ec_y args
 
-mainArgs ["btc", x]                  = putStrLn $ hx_btc x
-mainArgs ["satoshi", x]              = putStrLn $ hx_satoshi x
+mainArgs ("btc":args)                = interactArgLn "hx btc [<SATOSHIS>]" hx_btc     args
+mainArgs ("satoshi":args)            = interactArgLn "hx satoshi [<BTCS>]" hx_satoshi args
 mainArgs ["rfc1751-key"]             = interactLn hx_rfc1751_key
 mainArgs ["rfc1751-mnemonic"]        = interactLn hx_rfc1751_mnemonic
 mainArgs ["mnemonic"]                = interactLn hx_mnemonic
 mainArgs ("brainwallet":args)        = putStrLn $ hx_brainwallet args
+
 mainArgs ("mktx":file:args)          = BS.writeFile file $ hx_mktx args
 mainArgs ["sign-input",f,i,s]        = hx_sign_input f i s
 mainArgs ["set-input",f,i,s]         = hx_set_input f i s
 mainArgs ["validsig",f,i,s,sig]      = hx_validsig f i s sig
 mainArgs ("showtx":args)             = hx_showtx args
+
 mainArgs ("rawscript":args)          = interactArgsLn (hx_rawscript . unwords) args
 mainArgs ["showscript"]              = interactLn $ hx_showscript
 
