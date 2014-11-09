@@ -35,6 +35,15 @@ Supported commands:
     hx encode-addr --script                   [0]
     hx rawscript <SCRIPT_OP>*
     hx showscript
+
+    # ELECTRUM [2]
+    hx electrum-mpk
+    hx electrum-priv <INDEX> [<CHANGE-0|1>] [<RANGE-STOP>]
+    hx electrum-pub  <INDEX> [<CHANGE-0|1>] [<RANGE-STOP>]
+    hx electrum-addr <INDEX> [<CHANGE-0|1>] [<RANGE-STOP>]
+    hx electrum-seq  <INDEX> [<CHANGE-0|1>] [<RANGE-STOP>]
+    hx electrum-stretch-seed
+
     hx ec-multiply  <HEX-FIELDN> <HEX-POINT>
     hx ec-tweak-add <HEX-FIELDN> <HEX-POINT>
     hx ec-add-modp  <HEX-FIELDP> <HEX-FIELDP>
@@ -63,15 +72,27 @@ Supported commands:
     hx hex-decode                             [0]
     hx ripemd-hash
     hx sha256
-    hx sha1                                   [0]
     hx ripemd160                              [0]
+    hx sha1                                   [0]
     hx hash160                                [0]
     hx hash256                                [0]
     hx chksum32                               [0]
 
     [0]: Not available in sx
     [1]: `hx showtx` is always using JSON output,
-         `-j` and `--json` are ignored.
+        `-j` and `--json` are ignored.
+    [2]: The compatibility has been checked with electrum and with `sx`.
+        However if your `sx mpk` returns a hex representation of `64` digits,
+        then you *miss* half of it.
+        Moreover subsequent commands (genpub/genaddr) might behave
+        non-deterministically.
+        Finally they have different names:
+          mpk     -> electrum-mpk
+          genpub  -> electrum-pub
+          genpriv -> electrum-priv
+          genaddr -> electrum-addr
+        The commands electrum-seq and electrum-stretch-seed expose
+        the inner workings of the key derivation process.
 
     PATH      ::= <PATH-HEAD> <PATH-CONT>
     PATH-HEAD ::= 'A'   [address (compressed)]

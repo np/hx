@@ -30,6 +30,7 @@ import ParseScript
 import Mnemonic (hex_to_mn, mn_to_hex)
 import DetailedTx (txDetailedJSON)
 import Utils
+import Electrum
 
 readTxFile :: FilePath -> IO Tx
 readTxFile file = getHex "transaction" <$> BS.readFile file
@@ -478,6 +479,7 @@ mainArgs ["sha1"]                    = interactHex hashSha1BS
 mainArgs ["hash256"]                 = interactHex $ hash256BS . hash256BS
 mainArgs ["hash160"]                 = interactHex $ hash160BS . hash256BS
 mainArgs ["chksum32"]                = interactHex $ encode' . chksum32
+
 mainArgs ("ec-double":args)          = interactArgsLn hx_ec_double    args
 mainArgs ("ec-add":args)             = interactArgsLn hx_ec_add       args
 mainArgs ("ec-multiply":args)        = interactArgsLn hx_ec_multiply  args
@@ -494,6 +496,7 @@ mainArgs ("ec-int-modp":args)        = interactArgsLn hx_ec_int_modp args
 mainArgs ("ec-int-modn":args)        = interactArgsLn hx_ec_int_modn args
 mainArgs ("ec-x":args)               = interactArgsLn hx_ec_x args
 mainArgs ("ec-y":args)               = interactArgsLn hx_ec_y args
+
 mainArgs ["btc", x]                  = putStrLn $ hx_btc x
 mainArgs ["satoshi", x]              = putStrLn $ hx_satoshi x
 mainArgs ["rfc1751-key"]             = interactLn hx_rfc1751_key
@@ -507,6 +510,14 @@ mainArgs ["validsig",f,i,s,sig]      = hx_validsig f i s sig
 mainArgs ("showtx":args)             = hx_showtx args
 mainArgs ("rawscript":args)          = interactArgsLn (hx_rawscript . unwords) args
 mainArgs ["showscript"]              = interactLn $ hx_showscript
+
+mainArgs ["electrum-mpk"]            = interactLn   hx_electrum_mpk
+mainArgs ("electrum-priv":args)      = interactLn $ hx_electrum_priv args
+mainArgs ("electrum-pub":args)       = interactLn $ hx_electrum_pub  args
+mainArgs ("electrum-addr":args)      = interactLn $ hx_electrum_addr args
+mainArgs ("electrum-seq":args)       = interactLn $ hx_electrum_sequence args
+mainArgs ["electrum-stretch-seed"]   = interactLn   hx_electrum_stretch_seed
+
 mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"Supported commands:"
@@ -541,6 +552,15 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx encode-addr --script                   [0]"
                              ,"hx rawscript <SCRIPT_OP>*"
                              ,"hx showscript"
+                             ,""
+                             ,"# ELECTRUM [2]"
+                             ,"hx electrum-mpk"
+                             ,"hx electrum-priv <INDEX> [<CHANGE-0|1>] [<RANGE-STOP>]"
+                             ,"hx electrum-pub  <INDEX> [<CHANGE-0|1>] [<RANGE-STOP>]"
+                             ,"hx electrum-addr <INDEX> [<CHANGE-0|1>] [<RANGE-STOP>]"
+                             ,"hx electrum-seq  <INDEX> [<CHANGE-0|1>] [<RANGE-STOP>]"
+                             ,"hx electrum-stretch-seed"
+                             ,""
                              ,"hx ec-multiply  <HEX-FIELDN> <HEX-POINT>"
                              ,"hx ec-tweak-add <HEX-FIELDN> <HEX-POINT>"
                              ,"hx ec-add-modp  <HEX-FIELDP> <HEX-FIELDP>"
@@ -578,6 +598,18 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"[0]: Not available in sx"
                              ,"[1]: `hx showtx` is always using JSON output,"
                              ,"     `-j` and `--json` are ignored."
+                             ,"[2]: The compatibility has been checked with electrum and with `sx`."
+                             ,"     However if your `sx mpk` returns a hex representation of `64` digits,"
+                             ,"     then you *miss* half of it."
+                             ,"     Moreover subsequent commands (genpub/genaddr) might behave"
+                             ,"     non-deterministically."
+                             ,"     Finally they have different names:"
+                             ,"       mpk     -> electrum-mpk"
+                             ,"       genpub  -> electrum-pub"
+                             ,"       genpriv -> electrum-priv"
+                             ,"       genaddr -> electrum-addr"
+                             ,"     The commands electrum-seq and electrum-stretch-seed expose"
+                             ,"     the inner workings of the key derivation process."
                              ,""
                              ,"PATH      ::= <PATH-HEAD> <PATH-CONT>"
                              ,"PATH-HEAD ::= 'A'   [address (compressed)]"
