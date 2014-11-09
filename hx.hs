@@ -292,20 +292,21 @@ hx_base58_encode = encodeBase58 . decodeHex "input"
 hx_base58_decode :: Hex s => BS -> s
 hx_base58_decode = encodeHex . decodeBase58E
 
-ver_args :: String -> [String] -> BS -> BS
-ver_args _   []  = id
-ver_args _   [x] = BS.cons (parseWord8 "version byte" x)
-ver_args msg _   = error msg
-
 hx_base58check_encode :: Hex s => [String] -> s -> BS
 hx_base58check_encode args = encodeBase58Check
-                           . ver_args "Usage: hx base58check-encode [<VERSION-BYTE>]" args
+                           . BS.cons ver
                            . decodeHex "input"
+  where ver = case args of
+                []  -> 1
+                [x] -> parseWord8 "version byte" x
+                _   -> error "Usage: hx base58check-encode [<VERSION-BYTE>]"
 
-hx_base58check_decode :: Hex s => BS -> s
-hx_base58check_decode = encodeHex
-                      . fromMaybe (error "invalid base58check encoding")
-                      . decodeBase58Check
+hx_base58check_decode :: [String] -> BS -> BS
+hx_base58check_decode args
+  | null args = wrap . BS.uncons . checksum_decode . decodeBase58E
+  | otherwise = error "Usage: hx base58check-decode"
+  where wrap (Just (x,xs)) = encodeHex xs <> " " <> showB8 x
+        wrap Nothing       = ""
 
 hx_mnemonic :: BS -> BS
 hx_mnemonic s = case B8.words s of
@@ -462,7 +463,7 @@ mainArgs ["bip39-seed", pass]        = interactLn $ hx_bip39_seed pass
 mainArgs ["base58-encode"]           = interactLn hx_base58_encode
 mainArgs ["base58-decode"]           = interactLn hx_base58_decode
 mainArgs ("base58check-encode":args) = interactLn $ hx_base58check_encode args
-mainArgs ["base58check-decode"]      = interactLn hx_base58check_decode
+mainArgs ("base58check-decode":args) = interactLn $ hx_base58check_decode args
 mainArgs ["encode-addr", "--script"] = interactLn $ hx_encode_addr ScriptAddress
 mainArgs ["encode-addr"]             = interactLn $ hx_encode_addr PubKeyAddress
 mainArgs ["decode-addr"]             = interactLn hx_decode_addr
