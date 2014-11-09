@@ -446,12 +446,19 @@ hx_ec_y [p] = putHexP . fromMaybe (error "invalid point") . getY $ getPoint p
 hx_ec_y _   = error "Usage: hx ec-y [<HEX-POINT>]"
 
 mainArgs :: [String] -> IO ()
-mainArgs ("pubkey":args)             = interactLn $ hx_pubkey args
 mainArgs ["addr"]                    = interactLn hx_addr
+mainArgs ["validaddr",address]       = B8.putStrLn $ hx_validaddr address
+mainArgs ["encode-addr", "--script"] = interactLn $ hx_encode_addr ScriptAddress
+mainArgs ["encode-addr"]             = interactLn $ hx_encode_addr PubKeyAddress
+mainArgs ["decode-addr"]             = interactLn hx_decode_addr
+
+mainArgs ("pubkey":args)             = interactLn $ hx_pubkey args
+mainArgs ("brainwallet":args)        = putStrLn $ hx_brainwallet args
 mainArgs ["wif-to-secret"]           = interactLn hx_wif_to_secret
 mainArgs ["secret-to-wif"]           = interactLn hx_secret_to_wif
 mainArgs ["compress"]                = interactLn hx_compress
 mainArgs ["uncompress"]              = interactLn hx_uncompress
+
 mainArgs ["hd-priv"]                 = interactLn $ hx_hd_priv   Nothing
 mainArgs ["hd-priv", i]              = interactLn . hx_hd_priv $ Just (prvSubKeyE,   parseWord32 "hd-priv index" i)
 mainArgs ["hd-priv", "--hard", i]    = interactLn . hx_hd_priv $ Just (primeSubKeyE, parseWord32 "hd-priv index" i)
@@ -461,22 +468,27 @@ mainArgs ["hd-path", p]              = interactLn $ hx_hd_path p
 mainArgs ["hd-to-wif"]               = interactLn hx_hd_to_wif
 mainArgs ["hd-to-pubkey"]            = interactLn hx_hd_to_pubkey
 mainArgs ["hd-to-address"]           = interactLn hx_hd_to_address
+
 mainArgs ["bip39-mnemonic"]          = interactLn hx_bip39_mnemonic
 mainArgs ["bip39-hex"]               = interactLn hx_bip39_hex
 mainArgs ["bip39-seed", pass]        = interactLn $ hx_bip39_seed pass
+
+mainArgs ["rfc1751-key"]             = interactLn hx_rfc1751_key
+mainArgs ["rfc1751-mnemonic"]        = interactLn hx_rfc1751_mnemonic
+mainArgs ["mnemonic"]                = interactLn hx_mnemonic
+
+mainArgs ("btc":args)                = interactArgLn "hx btc [<SATOSHIS>]" hx_btc     args
+mainArgs ("satoshi":args)            = interactArgLn "hx satoshi [<BTCS>]" hx_satoshi args
 mainArgs ["base58-encode"]           = interactLn hx_base58_encode
 mainArgs ["base58-decode"]           = interactLn hx_base58_decode
 mainArgs ("base58check-encode":args) = interactLn $ hx_base58check_encode args
 mainArgs ("base58check-decode":args) = interactLn $ hx_base58check_decode args
-mainArgs ["encode-addr", "--script"] = interactLn $ hx_encode_addr ScriptAddress
-mainArgs ["encode-addr"]             = interactLn $ hx_encode_addr PubKeyAddress
-mainArgs ["decode-addr"]             = interactLn hx_decode_addr
-mainArgs ["validaddr",address]       = B8.putStrLn $ hx_validaddr address
 mainArgs ["integer"]                 = interactLn $ showB8 . bsToInteger . decodeHex "input"
 mainArgs ["hex-encode"]              = interactLn encodeHex
 mainArgs ["hex-decode"]              = interact $ decodeHex "input"
 mainArgs ["encode-hex"]{-deprecated-}= interactLn encodeHex
 mainArgs ["decode-hex"]{-deprecated-}= interact $ decodeHex "input"
+
 mainArgs ["ripemd-hash"]             = interactLn $ encodeHex . hash160BS . hash256BS
 mainArgs ["ripemd160"]               = interactHex hash160BS
 mainArgs ["sha256"]                  = interactHex hash256BS
@@ -505,13 +517,6 @@ mainArgs ("ec-int-modn":args)        = interactArgsLn hx_ec_int_modn args
 mainArgs ("ec-x":args)               = interactArgsLn hx_ec_x args
 mainArgs ("ec-y":args)               = interactArgsLn hx_ec_y args
 
-mainArgs ("btc":args)                = interactArgLn "hx btc [<SATOSHIS>]" hx_btc     args
-mainArgs ("satoshi":args)            = interactArgLn "hx satoshi [<BTCS>]" hx_satoshi args
-mainArgs ["rfc1751-key"]             = interactLn hx_rfc1751_key
-mainArgs ["rfc1751-mnemonic"]        = interactLn hx_rfc1751_mnemonic
-mainArgs ["mnemonic"]                = interactLn hx_mnemonic
-mainArgs ("brainwallet":args)        = putStrLn $ hx_brainwallet args
-
 mainArgs ("mktx":file:args)          = BS.writeFile file $ hx_mktx args
 mainArgs ["sign-input",f,i,s]        = hx_sign_input f i s
 mainArgs ["set-input",f,i,s]         = hx_set_input f i s
@@ -530,20 +535,35 @@ mainArgs ["electrum-stretch-seed"]   = interactLn   hx_electrum_stretch_seed
 
 mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
-                             ,"Supported commands:"
+                             ,"List of supported commands:"
                              ,""
-                             ,"hx pubkey [--compressed|--uncompressed]"
+                             ,"# ADDRESSES"
                              ,"hx addr"
                              ,"hx validaddr <ADDRESS>"
+                             ,"hx decode-addr"
+                             ,"hx encode-addr"
+                             ,"hx encode-addr --script                   [0]"
+                             ,""
+                             ,"# KEYS"
+                             ,"hx pubkey [--compressed|--uncompressed]"
                              ,"hx wif-to-secret"
                              ,"hx secret-to-wif"
+                             ,"hx brainwallet <PASSPHRASE>"
                              ,"hx compress                               [0]"
                              ,"hx uncompress                             [0]"
+                             ,""
+                             ,"# SCRIPTS"
+                             ,"hx rawscript <SCRIPT_OP>*"
+                             ,"hx showscript"
+                             ,""
+                             ,"# TRANSACTIONS"
                              ,"hx mktx <TXFILE> --input <TXHASH>:<INDEX> ... --output <ADDR>:<AMOUNT>"
                              ,"hx showtx [-j|--json] <TXFILE>            [1]"
                              ,"hx sign-input <TXFILE> <INDEX> <SCRIPT_CODE>"
                              ,"hx set-input  <TXFILE> <INDEX> <SIGNATURE_AND_PUBKEY_SCRIPT>"
                              ,"hx validsig   <TXFILE> <INDEX> <SCRIPT_CODE> <SIGNATURE>"
+                             ,""
+                             ,"# HD WALLET (BIP32)"
                              ,"hx hd-priv                                [0]"
                              ,"hx hd-priv <INDEX>"
                              ,"hx hd-priv --hard <INDEX>"
@@ -553,17 +573,8 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx hd-to-wif"
                              ,"hx hd-to-address"
                              ,"hx hd-to-pubkey                           [0]"
-                             ,"hx base58-encode"
-                             ,"hx base58-decode"
-                             ,"hx base58check-encode [<VERSION-BYTE>]"
-                             ,"hx base58check-decode"
-                             ,"hx decode-addr"
-                             ,"hx encode-addr"
-                             ,"hx encode-addr --script                   [0]"
-                             ,"hx rawscript <SCRIPT_OP>*"
-                             ,"hx showscript"
                              ,""
-                             ,"# ELECTRUM [2]"
+                             ,"# ELECTRUM DETERMINISTIC WALLET [2]"
                              ,"hx electrum-mpk"
                              ,"hx electrum-priv <INDEX> [<CHANGE-0|1>] [<RANGE-STOP>]"
                              ,"hx electrum-pub  <INDEX> [<CHANGE-0|1>] [<RANGE-STOP>]"
@@ -571,6 +582,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx electrum-seq  <INDEX> [<CHANGE-0|1>] [<RANGE-STOP>]"
                              ,"hx electrum-stretch-seed"
                              ,""
+                             ,"# ELLIPTIC CURVE MATHS"
                              ,"hx ec-multiply  <HEX-FIELDN> <HEX-POINT>"
                              ,"hx ec-tweak-add <HEX-FIELDN> <HEX-POINT>"
                              ,"hx ec-add-modp  <HEX-FIELDP> <HEX-FIELDP>"
@@ -587,27 +599,40 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx ec-int-modn <DECIMAL-INTEGER>          [0]"
                              ,"hx ec-x <HEX-POINT>                       [0]"
                              ,"hx ec-y <HEX-POINT>                       [0]"
+                             ,""
+                             ,"# MNEMONICS AND SEED FORMATS"
                              ,"hx mnemonic"
                              ,"hx bip39-mnemonic                         [0]"
                              ,"hx bip39-hex                              [0]"
                              ,"hx bip39-seed <PASSPHRASE>                [0]"
                              ,"hx rfc1751-key                            [0]"
                              ,"hx rfc1751-mnemonic                       [0]"
-                             ,"hx brainwallet <PASSPHRASE>               [0]"
+                             ,""
+                             ,"# BASIC ENCODINGS AND CONVERSIONS"
+                             ,"hx btc [<SATOSHIS>]                       [3]"
+                             ,"hx satoshi [<BTCS>]                       [3]"
                              ,"hx integer                                [0]"
                              ,"hx hex-encode                             [0]"
                              ,"hx hex-decode                             [0]"
+                             ,""
+                             ,"# BASE58 ENCODING"
+                             ,"hx base58-encode"
+                             ,"hx base58-decode"
+                             ,"hx base58check-encode [<VERSION-BYTE>]"
+                             ,"hx base58check-decode"
+                             ,""
+                             ,"# CHECKSUM32 (first 32bits of double sha256) [0]"
+                             ,"hx chksum32 <HEX>*"
+                             ,"hx chksum32-encode <HEX>*"
+                             ,"hx chksum32-decode <HEX>*"
+                             ,""
+                             ,"# HASHING"
                              ,"hx ripemd-hash"
                              ,"hx sha256"
                              ,"hx ripemd160                              [0]"
                              ,"hx sha1                                   [0]"
                              ,"hx hash160                                [0]"
                              ,"hx hash256                                [0]"
-                             ,""
-                             ,"# CHECKSUM32 (first 32bits of double sha256) [0]"
-                             ,"hx chksum32 <HEX>*"
-                             ,"hx chksum32-encode <HEX>*"
-                             ,"hx chksum32-decode <HEX>*"
                              ,""
                              ,"[0]: Not available in sx"
                              ,"[1]: `hx showtx` is always using JSON output,"
@@ -624,6 +649,9 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"       genaddr -> electrum-addr"
                              ,"     The commands electrum-seq and electrum-stretch-seed expose"
                              ,"     the inner workings of the key derivation process."
+                             ,"[3]: Rounding is done upward in `hx` and downard in `sx`."
+                             ,"     So they agree `btc 1.4` and `btc 1.9` but on `btc 1.5`,"
+                             ,"     `hx` returns `0.00000002` and `sx` returns `0.00000001`."
                              ,""
                              ,"PATH      ::= <PATH-HEAD> <PATH-CONT>"
                              ,"PATH-HEAD ::= 'A'   [address (compressed)]"
