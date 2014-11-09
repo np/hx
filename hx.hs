@@ -5,6 +5,7 @@ import Data.Either (partitionEithers)
 import Data.Word
 import Data.Monoid
 import Data.Scientific
+import Data.String
 import Data.Functor ((<$>))
 import Data.Char (isDigit,toLower)
 import Data.List (isPrefixOf)
@@ -268,7 +269,7 @@ hx_btc, hx_satoshi :: String -> String
 hx_btc     = formatScientific Fixed (Just 8) . (/ one_btc_in_satoshi) . read
 hx_satoshi = formatScientific Fixed (Just 0) . (* one_btc_in_satoshi) . read
 
-putSuccess :: Bool -> BS
+putSuccess :: IsString s => Bool -> s
 putSuccess True  = "Status: Success"
 putSuccess False = "Status: Invalid"
 
@@ -277,8 +278,10 @@ putSuccess' :: Bool -> BS
 putSuccess' True = "Status: OK"
 putSuccess'  _   = "Status: Failed"
 
-hx_validaddr :: String -> BS
-hx_validaddr = putSuccess . isJust . base58ToAddr
+hx_validaddr :: String -> String
+hx_validaddr = putSuccess . isJust . base58ToAddr . trim
+  -- Discaring the spaces seems a bit overzealous here
+  where trim = unwords . words
 
 hx_decode_addr :: Hex s => String -> s
 hx_decode_addr = putHex . getAddrHash . base58ToAddrE
@@ -447,7 +450,7 @@ hx_ec_y _   = error "Usage: hx ec-y [<HEX-POINT>]"
 
 mainArgs :: [String] -> IO ()
 mainArgs ["addr"]                    = interactLn hx_addr
-mainArgs ["validaddr",address]       = B8.putStrLn $ hx_validaddr address
+mainArgs ("validaddr":args)          = interactArgLn "hx validaddr [<ADDRESS>]" hx_validaddr args
 mainArgs ["encode-addr", "--script"] = interactLn $ hx_encode_addr ScriptAddress
 mainArgs ["encode-addr"]             = interactLn $ hx_encode_addr PubKeyAddress
 mainArgs ["decode-addr"]             = interactLn hx_decode_addr
@@ -539,7 +542,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"# ADDRESSES"
                              ,"hx addr"
-                             ,"hx validaddr <ADDRESS>"
+                             ,"hx validaddr [<ADDRESS>]"
                              ,"hx decode-addr"
                              ,"hx encode-addr"
                              ,"hx encode-addr --script                   [0]"

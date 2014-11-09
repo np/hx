@@ -7,7 +7,7 @@ List of supported commands:
 
     # ADDRESSES
     hx addr
-    hx validaddr <ADDRESS>
+    hx validaddr [<ADDRESS>]
     hx decode-addr
     hx encode-addr
     hx encode-addr --script                   [0]
