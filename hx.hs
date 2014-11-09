@@ -328,7 +328,8 @@ hx_rfc1751_mnemonic = B8.pack
                     . decodeHex "128 bits key"
 
 brainwallet :: BS -> BS
-brainwallet = encodeBase58 . wrapBS 128 . hash256BS
+brainwallet = B8.pack . toWIF . makePrvKeyU256 . hash256BS
+      -- OR = encodeBase58 . chksum32_encode . BS.cons 128 . hash256BS
 
 hx_brainwallet :: [String] -> BS
 hx_brainwallet [x]           = brainwallet . B8.pack $ x
@@ -395,11 +396,7 @@ chksum32_decode d | chksum32 pre == decode' post = pre
                   | otherwise                    = error "checksum does not match"
   where (pre,post) = BS.splitAt (BS.length d - 4) d
 
-wrapBS :: Word8 -> BS -> BS
-wrapBS v s = checksum_encode (BS.cons v s)
 
-unwrapBS :: BS -> Maybe (Word8, BS)
-unwrapBS = BS.uncons . checksum_decode
 
 hx_ec_double :: Hex s => [s] -> s
 hx_ec_double [p] = putPoint $ doublePoint (getPoint p)

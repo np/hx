@@ -7,6 +7,7 @@ import Control.Monad (unless)
 import Data.Binary
 import Data.Char (isSpace,isDigit,toLower)
 import Data.Functor ((<$>))
+import Data.Maybe
 import Data.Monoid
 import Data.String
 import qualified Data.ByteString as BS
@@ -187,3 +188,13 @@ decodeHexBytes msg b s
                                   ,show (8 * l), "bits)"]
   where x = decodeHex msg s
         l = BS.length x
+
+makePrvKey256 :: BS -> PrvKey
+makePrvKey256 s
+  | BS.length s == 32 = fromMaybe (error "makePrvKey256: invalid key") . makePrvKey $ bsToInteger s
+  | otherwise         = error $ "makePrvKey256: invalid size for input key, should be 256 bits and not " ++ show (BS.length s * 8) ++ " bits"
+
+makePrvKeyU256 :: BS -> PrvKey
+makePrvKeyU256 s
+  | BS.length s == 32 = fromMaybe (error "makePrvKeyU256: invalid key") . makePrvKeyU $ bsToInteger s
+  | otherwise         = error $ "makePrvKeyU256: invalid size for input key, should be 256 bits and not " ++ show (BS.length s * 8) ++ " bits"
