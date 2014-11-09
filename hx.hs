@@ -403,7 +403,7 @@ unwrapBS = BS.uncons . checksum_decode
 
 hx_ec_double :: Hex s => [s] -> s
 hx_ec_double [p] = putPoint $ doublePoint (getPoint p)
-hx_ec_double _   = error "Usage: hx ec-multiply <HEX-FIELDN> <HEX-POINT>"
+hx_ec_double _   = error "Usage: hx ec-double [<HEX-POINT>]"
 
 hx_ec_multiply :: Hex s => [s] -> s
 hx_ec_multiply [x, p] = putPoint $ mulPoint (getHexN x) (getPoint p)
@@ -427,19 +427,19 @@ hx_ec_add_modn _      = error "Usage: hx ec-add-modn <HEX-FIELDN> <HEX-FIELDN>"
 
 hx_ec_int_modp :: [String] -> String
 hx_ec_int_modp [x] = putHexP (fromInteger (readDigits "integer mod p" x))
-hx_ec_int_modp _   = error "Usage: hx ec-int-modp <DECIMAL-INTEGER>"
+hx_ec_int_modp _   = error "Usage: hx ec-int-modp [<DECIMAL-INTEGER>]"
 
 hx_ec_int_modn :: [String] -> String
 hx_ec_int_modn [x] = putHexN (fromInteger (readDigits "integer mod n" x))
-hx_ec_int_modn _   = error "Usage: hx ec-int-modn <DECIMAL-INTEGER>"
+hx_ec_int_modn _   = error "Usage: hx ec-int-modn [<DECIMAL-INTEGER>]"
 
 hx_ec_x :: Hex s => [s] -> s
 hx_ec_x [p] = putHexP . fromMaybe (error "invalid point") . getX $ getPoint p
-hx_ec_x _   = error "Usage: hx ec-x <HEX-POINT>"
+hx_ec_x _   = error "Usage: hx ec-x [<HEX-POINT>]"
 
 hx_ec_y :: Hex s => [s] -> s
 hx_ec_y [p] = putHexP . fromMaybe (error "invalid point") . getY $ getPoint p
-hx_ec_y _   = error "Usage: hx ec-y <HEX-POINT>"
+hx_ec_y _   = error "Usage: hx ec-y [<HEX-POINT>]"
 
 mainArgs :: [String] -> IO ()
 mainArgs ("pubkey":args)             = interactLn $ hx_pubkey args

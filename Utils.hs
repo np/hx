@@ -166,6 +166,7 @@ interactHex :: (BS -> BS) -> IO ()
 interactHex f = interact (withHex f :: BS -> BS)
 
 interactArgs :: (Interact s, PutStr s, IsString s, Eq s) => ([s] -> s) -> [s] -> IO ()
+interactArgs f [] = interact (f . return)
 interactArgs f xs = case length (filter (=="-") xs) of
   0 -> putStr (f xs)
   1 -> interact (\s -> f $ map (subst ("-", s)) xs)
