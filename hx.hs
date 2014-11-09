@@ -396,7 +396,14 @@ chksum32_decode d | chksum32 pre == decode' post = pre
                   | otherwise                    = error "checksum does not match"
   where (pre,post) = BS.splitAt (BS.length d - 4) d
 
+hx_chksum32 :: [String] -> String
+hx_chksum32 = withHex (encode' . chksum32) . concat
 
+hx_chksum32_encode :: [String] -> String
+hx_chksum32_encode = withHex chksum32_encode . concat
+
+hx_chksum32_decode :: [String] -> String
+hx_chksum32_decode = withHex chksum32_decode . concat
 
 hx_ec_double :: Hex s => [s] -> s
 hx_ec_double [p] = putPoint $ doublePoint (getPoint p)
@@ -476,7 +483,10 @@ mainArgs ["sha256"]                  = interactHex hash256BS
 mainArgs ["sha1"]                    = interactHex hashSha1BS
 mainArgs ["hash256"]                 = interactHex $ hash256BS . hash256BS
 mainArgs ["hash160"]                 = interactHex $ hash160BS . hash256BS
-mainArgs ["chksum32"]                = interactHex $ encode' . chksum32
+
+mainArgs ("chksum32":args)           = interactArgs hx_chksum32        args
+mainArgs ("chksum32-encode":args)    = interactArgs hx_chksum32_encode args
+mainArgs ("chksum32-decode":args)    = interactArgs hx_chksum32_decode args
 
 mainArgs ("ec-double":args)          = interactArgsLn hx_ec_double    args
 mainArgs ("ec-add":args)             = interactArgsLn hx_ec_add       args
@@ -591,7 +601,11 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx sha1                                   [0]"
                              ,"hx hash160                                [0]"
                              ,"hx hash256                                [0]"
-                             ,"hx chksum32                               [0]"
+                             ,""
+                             ,"# CHECKSUM32 (first 32bits of double sha256) [0]"
+                             ,"hx chksum32 <HEX>*"
+                             ,"hx chksum32-encode <HEX>*"
+                             ,"hx chksum32-decode <HEX>*"
                              ,""
                              ,"[0]: Not available in sx"
                              ,"[1]: `hx showtx` is always using JSON output,"

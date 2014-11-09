@@ -76,7 +76,12 @@ Supported commands:
     hx sha1                                   [0]
     hx hash160                                [0]
     hx hash256                                [0]
-    hx chksum32                               [0]
+
+    # CHECKSUM32 (first 32bits of double sha256) [0]
+
+    hx chksum32 <HEX>*
+    hx chksum32-encode <HEX>*
+    hx chksum32-decode <HEX>*
 
     [0]: Not available in sx
     [1]: `hx showtx` is always using JSON output,
