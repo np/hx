@@ -433,11 +433,11 @@ hx_ec_add_modn [x, y] = putHexN $ getHexN x + getHexN y
 hx_ec_add_modn _      = error "Usage: hx ec-add-modn <HEX-FIELDN> <HEX-FIELDN>"
 
 hx_ec_int_modp :: [String] -> String
-hx_ec_int_modp [x] = putHexP (fromInteger (readDigits "integer mod p" x))
+hx_ec_int_modp [x] = putHexP $ getDecP x
 hx_ec_int_modp _   = error "Usage: hx ec-int-modp [<DECIMAL-INTEGER>]"
 
 hx_ec_int_modn :: [String] -> String
-hx_ec_int_modn [x] = putHexN (fromInteger (readDigits "integer mod n" x))
+hx_ec_int_modn [x] = putHexN $ getDecN x
 hx_ec_int_modn _   = error "Usage: hx ec-int-modn [<DECIMAL-INTEGER>]"
 
 hx_ec_x :: Hex s => [s] -> s

@@ -150,6 +150,12 @@ getHexP = getHex "field number modulo P"
 putHexP :: Hex s => FieldP -> s
 putHexP = putHex
 
+getDecN :: String -> FieldN
+getDecN = fromInteger . readDigits "integer modulo n in decimal"
+
+getDecP :: String -> FieldP
+getDecP = fromInteger . readDigits "integer modulo p in decimal"
+
 putHex256 :: Hex s => Word256 -> s
 putHex256 = putHex
 
