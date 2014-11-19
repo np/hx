@@ -49,7 +49,7 @@ decode_mpk :: BS -> El_mpk
 decode_mpk s0
   | BS.length s == 32 = derived_mpk . decode_seed $ s
   | otherwise         = El_mpk . decodeHexBytes "electrum master public key" 64 $ s
-  where s = ignoreSpacesBS s0
+  where s = ignoreSpaces s0
 
 derive_priv :: Word32 -> Bool -> El_seed -> PrvKey
 derive_priv n for_change seed = PrvKeyU sk
@@ -71,23 +71,23 @@ hx_electrum_stretch_seed :: BS -> BS
 hx_electrum_stretch_seed
   = encodeHex . stretched_seed_bytes . decode_seed
 
-hx_electrum_priv :: [String] -> BS -> BS
+hx_electrum_priv :: [BS] -> BS -> BS
 hx_electrum_priv = hx_electrum_args "electrum-priv" decode_seed $ \n c s ->
                      B8.pack . toWIF $ derive_priv n c s
 
-hx_electrum_sequence :: [String] -> BS -> BS
+hx_electrum_sequence :: [BS] -> BS -> BS
 hx_electrum_sequence = hx_electrum_args "electrum-sequence" decode_mpk $ \n c s ->
                          encodeHex $ sequenceBS n c s
 
-hx_electrum_pub :: [String] -> BS -> BS
+hx_electrum_pub :: [BS] -> BS -> BS
 hx_electrum_pub = hx_electrum_args "electrum-pub" decode_mpk $ \n c s ->
                     putHex $ derive_pub n c s
 
-hx_electrum_addr :: [String] -> BS -> BS
+hx_electrum_addr :: [BS] -> BS -> BS
 hx_electrum_addr = hx_electrum_args "electrum-addr" decode_mpk $ \n c s ->
                      B8.pack . addrToBase58 . pubKeyAddr $ derive_pub n c s
 
-hx_electrum_args :: String -> (BS -> i) -> (Word32 -> Bool -> i -> BS) -> [String] -> BS -> BS
+hx_electrum_args :: String -> (BS -> i) -> (Word32 -> Bool -> i -> BS) -> [BS] -> BS -> BS
 hx_electrum_args name decode_input f args0 s =
   case args0 of
     []          -> usage

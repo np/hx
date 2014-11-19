@@ -1,17 +1,14 @@
 {-# LANGUAGE OverloadedStrings, TypeSynonymInstances, FlexibleInstances #-}
 module Utils where
 
-import qualified Prelude as Prelude
-import Prelude hiding (interact, putStr)
+import Control.Applicative
 import Data.Binary
 import Data.Char (isSpace,isDigit,toLower)
-import Data.Functor ((<$>))
 import Data.Maybe
 import Data.Monoid
 import Data.String
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
-import qualified Data.ByteString.Lazy.Char8 as LB8
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Base16 as B16
 import Network.Haskoin.Crypto
@@ -40,39 +37,11 @@ instance Hex BS where
   decodeHex msg s
     | BS.null rest = s'
     | otherwise    = error $ msg ++ ": invalid hex encoding"
-    where (s',rest) = B16.decode (ignoreSpacesBS s)
+    where (s',rest) = B16.decode (ignoreSpaces s)
 
 instance Hex LBS.ByteString where
   decodeHex msg = decodeHex msg . toStrictBS
   encodeHex     = toLazyBS . encodeHex
-
-class PutStr s where
-  putStr   :: s -> IO ()
-  putStrLn :: s -> IO ()
-
-instance PutStr String where
-  putStr   = Prelude.putStr
-  putStrLn = Prelude.putStrLn
-
-instance PutStr BS.ByteString where
-  putStr   = BS.putStr
-  putStrLn = B8.putStrLn
-
-instance PutStr LBS.ByteString where
-  putStr   = LBS.putStr
-  putStrLn = LB8.putStrLn
-
-class Interact s where
-  interact :: (s -> s) -> IO ()
-
-instance Interact String where
-  interact = Prelude.interact
-
-instance Interact BS.ByteString where
-  interact = BS.interact
-
-instance Interact LBS.ByteString where
-  interact = LBS.interact
 
 putLn :: (IsString s, Monoid s) => s -> s
 putLn = (<> "\n")
@@ -80,42 +49,43 @@ putLn = (<> "\n")
 showB8 :: Show a => a -> BS
 showB8 = B8.pack . show
 
-strictReadDigits :: Read a => String -> String -> a
-strictReadDigits  msg s | all isDigit s = read s
-                  | otherwise     = error $ "Invalid number containing non digits (while reading " <> msg <> ")"
+strictReadDigits :: Read a => String -> BS -> a
+strictReadDigits msg s
+  | B8.all isDigit s = read (B8.unpack s)
+  | otherwise        = error $ "Invalid number containing non digits (while reading " <> msg <> ")"
 
 -- Same as strictReadDigits but ignore spaces in the input
-readDigits :: Read a => String -> String -> a
-readDigits  msg = strictReadDigits msg . ignoreSpacesS
+readDigits :: Read a => String -> BS -> a
+readDigits  msg = strictReadDigits msg . ignoreSpaces
 
-parseInt    :: String -> String -> Int
-parseWord8  :: String -> String -> Word8
-parseWord32 :: String -> String -> Word32
-parseWord64 :: String -> String -> Word64
+parseInt    :: String -> BS -> Int
+parseWord8  :: String -> BS -> Word8
+parseWord32 :: String -> BS -> Word32
+parseWord64 :: String -> BS -> Word64
 
 parseInt    = readDigits
 parseWord8  = readDigits
 parseWord32 = readDigits
 parseWord64 = readDigits
 
+readBS :: Read a => BS -> a
+readBS = read . B8.unpack
+
 show01 :: IsString s => Bool -> s
 show01 True  = "1"
 show01 False = "0"
 
-read01 :: String -> Bool
+read01 :: BS -> Bool
 read01 s
-  | map toLower s `elem` ["0","false","no"] = False
-  | map toLower s `elem` ["1","true","yes"] = True
+  | B8.map toLower s `elem` ["0","false","no"] = False
+  | B8.map toLower s `elem` ["1","true","yes"] = True
   | otherwise = error $ "Expect 0, false, no, 1, true, or yes, not " ++ show s
 
-ignoreSpacesS :: String -> String
-ignoreSpacesS = filter $ not . isSpace
+ignoreSpaces :: BS -> BS
+ignoreSpaces = B8.filter $ not . isSpace
 
-ignoreSpacesBS :: BS -> BS
-ignoreSpacesBS = B8.filter $ not . isSpace
-
-interactLn :: (IsString s, Monoid s, Interact s) => (s -> s) -> IO ()
-interactLn f = interact $ putLn . f
+interactLn :: (BS -> BS) -> IO ()
+interactLn f = BS.interact $ putLn . f
 
 putHex :: (Hex s, Binary a) => a -> s
 putHex = encodeHex . encode'
@@ -154,16 +124,16 @@ getHexP = getHex "field number modulo P"
 putHexP :: Hex s => FieldP -> s
 putHexP = putHex
 
-getDecModN :: String -> FieldN
+getDecModN :: BS -> FieldN
 getDecModN = fromInteger . readDigits "integer modulo n in decimal"
 
-getDecModP :: String -> FieldP
+getDecModP :: BS -> FieldP
 getDecModP = fromInteger . readDigits "integer modulo p in decimal"
 
-getDecStrictN :: String -> FieldN
+getDecStrictN :: BS -> FieldN
 getDecStrictN = integerN . readDigits "integer modulo n in decimal"
 
-getDecStrictP :: String -> FieldP
+getDecStrictP :: BS -> FieldP
 getDecStrictP = integerP . readDigits "integer modulo p in decimal"
 
 
@@ -181,25 +151,35 @@ putPoint :: Hex s => Point -> s
 putPoint = putHex . PubKey
 
 interactHex :: (BS -> BS) -> IO ()
-interactHex f = interact (withHex f :: BS -> BS)
+interactHex f = BS.interact (withHex f :: BS -> BS)
 
-interactArgs :: (Interact s, PutStr s, IsString s, Eq s) => ([s] -> s) -> [s] -> IO ()
-interactArgs f [] = interact (f . return)
-interactArgs f xs = case length (filter (=="-") xs) of
-  0 -> putStr (f xs)
-  1 -> interact (\s -> f $ map (subst ("-", s)) xs)
+interactArgs' :: (IsString s, Eq s) => (s -> IO ()) -> IO s -> ([s] -> s) -> [s] -> IO ()
+interactArgs' puts gets f [] = puts . f . return =<< gets
+interactArgs' puts gets f xs = case length (filter (=="-") xs) of
+  0 -> puts (f xs)
+  1 -> gets >>= (\s -> puts . f $ map (subst ("-", s)) xs)
   n -> error $ "Using '-' to read from standard input can be used only once, not " ++ show n ++ " times."
 
-interactArgsLn :: (Interact s, PutStr s, IsString s, Eq s, Monoid s) => ([s] -> s) -> [s] -> IO ()
+interactArgs :: ([BS] -> BS) -> [BS] -> IO ()
+interactArgs = interactArgs' BS.putStr BS.getContents
+
+interactArgsLn :: ([BS] -> BS) -> [BS] -> IO ()
 interactArgsLn = interactArgs . (putLn .)
 
-interactArg :: (Interact s, PutStr s, IsString s, Eq s) => String -> (s -> s) -> [s] -> IO ()
+interactArg :: String -> (BS -> BS) -> [BS] -> IO ()
 interactArg msg f = interactArgs f'
   where f' [x] = f x
         f' _   = error $ "Too many arguments.\nUsage: " ++ msg
 
-interactArgLn :: (Interact s, PutStr s, IsString s, Eq s, Monoid s) => String -> (s -> s) -> [s] -> IO ()
+interactArgLn :: String -> (BS -> BS) -> [BS] -> IO ()
 interactArgLn msg = interactArg msg . (putLn .)
+
+writeArg :: BS -> BS -> IO ()
+writeArg "-" = BS.putStr
+writeArg fp  = BS.writeFile (B8.unpack fp)
+
+interactFileArgs :: ([BS] -> BS) -> BS -> [BS] -> IO ()
+interactFileArgs f file = interactArgs' (writeArg file) BS.getContents f
 
 splitOn :: Char -> String -> (String, String)
 splitOn c xs = (ys, tail zs)

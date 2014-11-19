@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings, TypeSynonymInstances, FlexibleInstances #-}
-import Prelude hiding (interact, filter, putStr, putStrLn)
 import Data.Maybe
 import Data.Either (partitionEithers)
 import Data.Word
@@ -8,11 +7,11 @@ import Data.Scientific
 import Data.String
 import Data.Functor ((<$>))
 import Data.Char (isDigit,toLower)
-import Data.List (isPrefixOf)
 import qualified Data.RFC1751 as RFC1751
 import System.Environment
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
+import qualified Data.ByteString.Lazy as LBS
 
 import Network.Haskoin.Crypto
 import Network.Haskoin.Internals ( curveP, curveN, curveG, integerA, integerB
@@ -33,10 +32,10 @@ import DetailedTx (txDetailedJSON)
 import Utils
 import Electrum
 
-type TxFile = FilePath
+type TxFile = BS
 
 readTxFile :: TxFile -> IO Tx
-readTxFile file = getHex "transaction" <$> BS.readFile file
+readTxFile file = getHex "transaction" <$> BS.readFile (B8.unpack file)
 
 one_btc_in_satoshi :: Num a => a
 one_btc_in_satoshi = 10^(8 :: Int)
@@ -64,24 +63,36 @@ instance Compress Key where
   uncompress = mapKey uncompress uncompress
 
 decodeBase58E :: BS -> BS
-decodeBase58E = fromMaybe (error "invalid base58 encoding") . decodeBase58 . ignoreSpacesBS
+decodeBase58E = fromMaybe (error "invalid base58 encoding") . decodeBase58 . ignoreSpaces
 
-xPrvImportE :: String -> XPrvKey
-xPrvImportE = fromMaybe (error "invalid extended private key") . xPrvImport . ignoreSpacesS
+xPrvImportBS :: BS -> Maybe XPrvKey
+xPrvImportBS = xPrvImport . B8.unpack
 
-xPubImportE :: String -> XPubKey
-xPubImportE = fromMaybe (error "invalid extended public key") . xPubImport . ignoreSpacesS
+xPubImportBS :: BS -> Maybe XPubKey
+xPubImportBS = xPubImport . B8.unpack
+
+xPrvExportBS :: XPrvKey -> BS
+xPrvExportBS = B8.pack . xPrvExport
+
+xPubExportBS :: XPubKey -> BS
+xPubExportBS = B8.pack . xPubExport
+
+xPrvImportE :: BS -> XPrvKey
+xPrvImportE = fromMaybe (error "invalid extended private key") . xPrvImportBS . ignoreSpaces
+
+xPubImportE :: BS -> XPubKey
+xPubImportE = fromMaybe (error "invalid extended public key") . xPubImportBS . ignoreSpaces
 
 data XKey = XPub XPubKey | XPrv XPrvKey
 
-xKeyImport :: String -> Maybe XKey
+xKeyImport :: BS -> Maybe XKey
 xKeyImport s
-  | "xprv" `isPrefixOf` s = XPrv <$> xPrvImport s
-  | "xpub" `isPrefixOf` s = XPub <$> xPubImport s
+  | "xprv" `BS.isPrefixOf` s = XPrv <$> xPrvImportBS s
+  | "xpub" `BS.isPrefixOf` s = XPub <$> xPubImportBS s
   | otherwise             = Nothing
 
-xKeyImportE :: String -> XKey
-xKeyImportE = fromMaybe (error "invalid extended public or private key") . xKeyImport . ignoreSpacesS
+xKeyImportE :: BS -> XKey
+xKeyImportE = fromMaybe (error "invalid extended public or private key") . xKeyImport . ignoreSpaces
 
 pubXKey :: XKey -> XPubKey
 pubXKey (XPub k) = k
@@ -91,21 +102,21 @@ xMasterImportE :: Hex s => s -> XPrvKey
 xMasterImportE = fromMaybe (error "failed to derived private root key from seed") . makeXPrvKey
                . decodeHex "seed"
 
-xPrvExportC :: Char -> XPrvKey -> String
-xPrvExportC 'A' = addrToBase58 . xPubAddr . deriveXPubKey
+xPrvExportC :: Char -> XPrvKey -> BS
+xPrvExportC 'A' = addrToBase58BS . xPubAddr . deriveXPubKey
 xPrvExportC 'P' = putHex . xPubKey . deriveXPubKey
-xPrvExportC 'p' = xPrvWIF
+xPrvExportC 'p' = B8.pack . xPrvWIF
 xPrvExportC 'U' = putHex . uncompress . xPubKey . deriveXPubKey
-xPrvExportC 'u' = toWIF . uncompress . xPrvKey
-xPrvExportC 'M' = xPubExport . deriveXPubKey
-xPrvExportC 'm' = xPrvExport
+xPrvExportC 'u' = toWIFBS . uncompress . xPrvKey
+xPrvExportC 'M' = xPubExportBS . deriveXPubKey
+xPrvExportC 'm' = xPrvExportBS
 xPrvExportC  c  = error $ "Root path expected to be m/, M/, A/, P/, p/, U/, or u/ not " ++ c : "/"
 
-xPubExportC :: Char -> XPubKey -> String
-xPubExportC 'A' = addrToBase58 . xPubAddr
+xPubExportC :: Char -> XPubKey -> BS
+xPubExportC 'A' = addrToBase58BS . xPubAddr
 xPubExportC 'P' = putHex . xPubKey
 xPubExportC 'U' = putHex . uncompress . xPubKey
-xPubExportC 'M' = xPubExport
+xPubExportC 'M' = xPubExportBS
 xPubExportC 'u' = error "Uncompressed private keys can not be derived from extended public keys (expected P/, U/ or M/ not u/)"
 xPubExportC 'p' = error "Private keys can not be derived from extended public keys (expected P/, U/ or M/ not p/)"
 xPubExportC 'm' = error "Extended private keys can not be derived from extended public keys (expected M/ not m/)"
@@ -132,11 +143,14 @@ derivePubPath ('/':xs) = goIndex $ span isDigit xs
                         {- This read works because (all isDigit ys && not (null ys)) holds -}
 derivePubPath _ = error "malformed path"
 
-fromWIFE :: String -> PrvKey
-fromWIFE = fromMaybe (error "invalid WIF private key") . fromWIF . ignoreSpacesS
+fromWIFE :: BS -> PrvKey
+fromWIFE = fromMaybe (error "invalid WIF private key") . fromWIF . B8.unpack . ignoreSpaces
 
-base58ToAddrE :: String -> Address
-base58ToAddrE = fromMaybe (error "invalid bitcoin address") . base58ToAddr . ignoreSpacesS
+toWIFBS :: PrvKey -> BS
+toWIFBS = B8.pack . toWIF
+
+base58ToAddrE :: BS -> Address
+base58ToAddrE = fromMaybe (error "invalid bitcoin address") . base58ToAddr . B8.unpack . ignoreSpaces
 
 prvSubKeyE :: XPrvKey -> Word32 -> XPrvKey
 prvSubKeyE k = fromMaybe (error "failed to derive private sub key") . prvSubKey k
@@ -147,13 +161,18 @@ primeSubKeyE k = fromMaybe (error "failed to derive private prime sub key") . pr
 pubSubKeyE :: XPubKey -> Word32 -> XPubKey
 pubSubKeyE k = fromMaybe (error "failed to derive public sub key") . pubSubKey k
 
-readOutPoint :: String -> OutPoint
-readOutPoint xs = OutPoint (getHexLE "transaction hash" ys) (parseWord32 "output point index" zs) where (ys,zs) = splitOn ':' xs
+splitOnBS :: Char -> BS -> (BS,BS)
+splitOnBS c s =
+  case B8.span (/= c) s of
+    (s1, s2) -> (s1, BS.drop 1 s2)
 
-readOutput :: String -> (String,Word64)
-readOutput xs = (ys, parseWord64 "output index" zs) where (ys,zs) = splitOn ':' xs
+readOutPoint :: BS -> OutPoint
+readOutPoint xs = OutPoint (getHexLE "transaction hash" ys) (parseWord32 "output point index" zs) where (ys,zs) = splitOnBS ':' xs
 
-mktx_args :: [String] -> [Either OutPoint (String,Word64)]
+readOutput :: BS -> (String,Word64)
+readOutput xs = (B8.unpack ys, parseWord64 "output index" zs) where (ys,zs) = splitOnBS ':' xs
+
+mktx_args :: [BS] -> [Either OutPoint (String,Word64)]
 mktx_args [] = []
 mktx_args ( "--input":input :args) = Left (readOutPoint input) : mktx_args args
 mktx_args (      "-i":input :args) = Left (readOutPoint input) : mktx_args args
@@ -177,12 +196,12 @@ onKey :: (PrvKey -> a) -> (PubKey -> a) -> Key -> a
 onKey onPrv _     (Prv k) = onPrv k
 onKey _     onPub (Pub k) = onPub k
 
-getKey :: String -> Key
-getKey s | ('0':_) <- s = Pub $ getPubKey s
-         | otherwise    = Prv $ fromWIFE  s
+getKey :: BS -> Key
+getKey s | Just('0',_) <- B8.uncons s = Pub $ getPubKey s
+         | otherwise                  = Prv $ fromWIFE  s
 
-putKey :: Key -> String
-putKey = onKey toWIF putHex
+putKey :: Key -> BS
+putKey = onKey toWIFBS putHex
 
 mapKey :: (PrvKey -> PrvKey) -> (PubKey -> PubKey) -> Key -> Key
 mapKey onPrv onPub = onKey (Prv . onPrv) (Pub . onPub)
@@ -194,26 +213,29 @@ pubKey (Pub k) = k
 keyAddr :: Key -> Address
 keyAddr = pubKeyAddr . pubKey
 
-keyAddrBase58 :: Key -> String
-keyAddrBase58 = addrToBase58 . keyAddr
+addrToBase58BS :: Address -> BS
+addrToBase58BS = B8.pack . addrToBase58
 
-hx_compress :: String -> String
+keyAddrBase58 :: Key -> BS
+keyAddrBase58 = addrToBase58BS . keyAddr
+
+hx_compress :: BS -> BS
 hx_compress = putKey . compress . getKey
 
-hx_uncompress :: String -> String
+hx_uncompress :: BS -> BS
 hx_uncompress = putKey . uncompress . getKey
 
-hx_mktx :: Hex s => [String] -> s
+hx_mktx :: Hex s => [BS] -> s
 hx_mktx args = putHex . either error id . uncurry buildAddrTx
-             . partitionEithers $ mktx_args args
+             . partitionEithers . mktx_args $ args
 
-hx_pubkey :: Hex s => [String] -> String -> s
+hx_pubkey :: Hex s => [BS] -> BS -> s
 hx_pubkey args = putHex . compressIf . pubKey . compat . getKey
   where compressIf :: PubKey -> PubKey
         compressIf = case args of
           [] -> id
-          [o] | map toLower o `elem` ["1","true","yes","--compressed","-c"]   -> compress
-              | map toLower o `elem` ["0","false","no","--uncompressed","-u"] -> uncompress
+          [o] | B8.map toLower o `elem` ["1","true","yes","--compressed","-c"]   -> compress
+              | B8.map toLower o `elem` ["0","false","no","--uncompressed","-u"] -> uncompress
           _ -> error "Usage: hx pubkey [--uncompressed|--compressed]"
 
         -- This is for compatibility with `sx', namely if one gives a
@@ -222,54 +244,56 @@ hx_pubkey args = putHex . compressIf . pubKey . compat . getKey
         -- I would prefer to do nothing here instead.
         compat = mapKey id uncompress
 
-hx_addr :: String -> String
+hx_addr :: BS -> BS
 hx_addr = keyAddrBase58 . getKey
 
-hx_wif_to_secret :: Hex s => String -> s
+hx_wif_to_secret :: Hex s => BS -> s
 hx_wif_to_secret = encodeHex . runPut' . putPrvKey . fromWIFE
 
-hx_secret_to_wif :: String -> String
-hx_secret_to_wif = toWIF . fromMaybe (error "invalid private key")
+hx_secret_to_wif :: BS -> BS
+hx_secret_to_wif = toWIFBS . fromMaybe (error "invalid private key")
                  . makePrvKey . bsToInteger
                  . decodeHex "private key"
 
-hx_hd_to_wif :: String -> String
-hx_hd_to_wif = xPrvWIF . xPrvImportE
+hx_hd_to_wif :: BS -> BS
+hx_hd_to_wif = B8.pack . xPrvWIF . xPrvImportE
 
 -- TODO support private keys as well
-hx_hd_to_address :: String -> String
-hx_hd_to_address = addrToBase58 . xPubAddr . pubXKey . xKeyImportE
+hx_hd_to_address :: BS -> BS
+hx_hd_to_address = addrToBase58BS . xPubAddr . pubXKey . xKeyImportE
 
-hx_hd_to_pubkey :: Hex s => String -> s
+hx_hd_to_pubkey :: Hex s => BS -> s
 hx_hd_to_pubkey = putHex . xPubKey . pubXKey . xKeyImportE
 
-hx_hd_priv :: Maybe (XPrvKey -> Word32 -> XPrvKey, Word32) -> String -> String
-hx_hd_priv Nothing         = xPrvExport . xMasterImportE
-hx_hd_priv (Just (sub, i)) = xPrvExport . flip sub i . xPrvImportE
+hx_hd_priv :: Maybe (XPrvKey -> Word32 -> XPrvKey, Word32) -> BS -> BS
+hx_hd_priv Nothing         = xPrvExportBS . xMasterImportE
+hx_hd_priv (Just (sub, i)) = xPrvExportBS . flip sub i . xPrvImportE
 
-hx_hd_pub :: Maybe Word32 -> String -> String
-hx_hd_pub Nothing  = xPubExport . deriveXPubKey     . xPrvImportE
-hx_hd_pub (Just i) = xPubExport . flip pubSubKeyE i . pubXKey . xKeyImportE
+hx_hd_pub :: Maybe Word32 -> BS -> BS
+hx_hd_pub Nothing  = xPubExportBS . deriveXPubKey     . xPrvImportE
+hx_hd_pub (Just i) = xPubExportBS . flip pubSubKeyE i . pubXKey . xKeyImportE
 
-hx_hd_path :: String -> String -> String
-hx_hd_path []    _ = error "Empty path"
-hx_hd_path (m:p) i
-  | "xpub" `isPrefixOf` i = xPubExportC m . derivePubPath p $ xPubImportE    i
-  | "xprv" `isPrefixOf` i = xPrvExportC m . derivePrvPath p $ xPrvImportE    i
-  | otherwise             = xPrvExportC m . derivePrvPath p $ xMasterImportE i
+hx_hd_path :: BS -> BS -> BS
+hx_hd_path mp i =
+  case B8.unpack mp of
+    [] -> error "Empty path"
+    (m:p)
+      | "xpub" `BS.isPrefixOf` i -> xPubExportC m . derivePubPath p $ xPubImportE    i
+      | "xprv" `BS.isPrefixOf` i -> xPrvExportC m . derivePrvPath p $ xPrvImportE    i
+      | otherwise                -> xPrvExportC m . derivePrvPath p $ xMasterImportE i
 
-hx_bip39_mnemonic :: Hex s => s -> String
-hx_bip39_mnemonic = either error id . toMnemonic . decodeHex "seed"
+hx_bip39_mnemonic :: Hex s => s -> BS
+hx_bip39_mnemonic = either error B8.pack . toMnemonic . decodeHex "seed"
 
-hx_bip39_hex :: Hex s => String -> s
-hx_bip39_hex = encodeHex . either error id . fromMnemonic
+hx_bip39_hex :: Hex s => BS -> s
+hx_bip39_hex = encodeHex . either error id . fromMnemonic . B8.unpack
 
-hx_bip39_seed :: Hex s => Passphrase -> Mnemonic -> s
-hx_bip39_seed pf = encodeHex . either error id . mnemonicToSeed pf
+hx_bip39_seed :: Hex s => {-passphrase-}BS -> {-mnemonic-}BS -> s
+hx_bip39_seed pf = encodeHex . either error id . mnemonicToSeed (B8.unpack pf) . B8.unpack
 
-hx_btc, hx_satoshi :: String -> String
-hx_btc     = formatScientific Fixed (Just 8) . (/ one_btc_in_satoshi) . read
-hx_satoshi = formatScientific Fixed (Just 0) . (* one_btc_in_satoshi) . read
+hx_btc, hx_satoshi :: BS -> BS
+hx_btc     = B8.pack . formatScientific Fixed (Just 8) . (/ one_btc_in_satoshi) . readBS
+hx_satoshi = B8.pack . formatScientific Fixed (Just 0) . (* one_btc_in_satoshi) . readBS
 
 putSuccess :: IsString s => Bool -> s
 putSuccess True  = "Status: Success"
@@ -280,16 +304,16 @@ putSuccess' :: Bool -> BS
 putSuccess' True = "Status: OK"
 putSuccess'  _   = "Status: Failed"
 
-hx_validaddr :: String -> String
-hx_validaddr = putSuccess . isJust . base58ToAddr . trim
+hx_validaddr :: BS -> BS
+hx_validaddr = putSuccess . isJust . base58ToAddr . B8.unpack . trim
   -- Discaring the spaces seems a bit overzealous here
-  where trim = unwords . words
+  where trim = B8.unwords . B8.words
 
-hx_decode_addr :: Hex s => String -> s
+hx_decode_addr :: Hex s => BS -> s
 hx_decode_addr = putHex . getAddrHash . base58ToAddrE
 
-hx_encode_addr :: Hex s => (Word160 -> Address) -> s -> String
-hx_encode_addr f = addrToBase58 . f . getHex "address"
+hx_encode_addr :: Hex s => (Word160 -> Address) -> s -> BS
+hx_encode_addr f = addrToBase58BS . f . getHex "address"
 
 hx_base58_encode :: Hex s => s -> BS
 hx_base58_encode = encodeBase58 . decodeHex "input"
@@ -297,7 +321,7 @@ hx_base58_encode = encodeBase58 . decodeHex "input"
 hx_base58_decode :: Hex s => BS -> s
 hx_base58_decode = encodeHex . decodeBase58E
 
-hx_base58check_encode :: Hex s => [String] -> s -> BS
+hx_base58check_encode :: Hex s => [BS] -> s -> BS
 hx_base58check_encode args = encodeBase58Check
                            . BS.cons ver
                            . decodeHex "input"
@@ -306,7 +330,7 @@ hx_base58check_encode args = encodeBase58Check
                 [x] -> parseWord8 "version byte" x
                 _   -> error "Usage: hx base58check-encode [<VERSION-BYTE>]"
 
-hx_base58check_decode :: [String] -> BS -> BS
+hx_base58check_decode :: [BS] -> BS -> BS
 hx_base58check_decode args
   | null args = wrap . BS.uncons . chksum32_decode . decodeBase58E
   | otherwise = error "Usage: hx base58check-decode"
@@ -333,31 +357,32 @@ hx_rfc1751_mnemonic = B8.pack
                     . decodeHex "128 bits key"
 
 brainwallet :: BS -> BS
-brainwallet = B8.pack . toWIF . makePrvKeyU256 . hash256BS
+brainwallet = toWIFBS . makePrvKeyU256 . hash256BS
       -- OR = encodeBase58 . chksum32_encode . BS.cons 128 . hash256BS
 
-hx_brainwallet :: [String] -> BS
-hx_brainwallet [x]           = brainwallet . B8.pack $ x
+hx_brainwallet :: [BS] -> BS
+hx_brainwallet [x]           = brainwallet $ x
 hx_brainwallet []            = error . brainwallet_usage $ "too few arguments"
-hx_brainwallet (x@('-':_):_) = error . brainwallet_usage $ "unexpected argument, " ++ show x
-hx_brainwallet _             = error . brainwallet_usage $ "too many arguments"
+hx_brainwallet (x:_)
+  | "-" `BS.isPrefixOf` x    = error . brainwallet_usage $ "unexpected argument, " ++ show x
+  | otherwise                = error . brainwallet_usage $ "too many arguments"
 
 brainwallet_usage :: String -> String
 brainwallet_usage msg = unlines [msg, "Usage: hx brainwallet <PASSPHRASE>"]
 
-getSig :: String -> Signature
+getSig :: BS -> Signature
 getSig = getHex "signature"
 
-hx_verifysig_modn :: [String] -> String
+hx_verifysig_modn :: [BS] -> BS
 hx_verifysig_modn [msg,pub,sig] = putSuccess $ verifySig (fromIntegral $ getDecStrictN msg) (getSig sig) (getPubKey pub)
 hx_verifysig_modn _ = error "Usage: hx verifysig-modn <MESSAGE-DECIMAL-INTEGER> <PUBKEY> <SIGNATURE>"
 
-hx_signmsg_modn :: [String] -> String
+hx_signmsg_modn :: [BS] -> BS
 hx_signmsg_modn [msg,prv] = putHex $ detSignMsg (fromIntegral $ getDecStrictN msg) (fromWIFE prv)
 hx_signmsg_modn _ = error "Usage: hx signmsg-modn <MESSAGE-DECIMAL-INTEGER> <PRIVKEY>"
 
 -- set-input FILENAME N SIGNATURE_AND_PUBKEY_SCRIPT
-hx_set_input :: TxFile -> String -> String -> IO ()
+hx_set_input :: TxFile -> BS -> BS -> IO ()
 hx_set_input file index script =
   do tx <- readTxFile file
      B8.putStrLn . putHex $ hx_set_input' (parseInt "input index" index) (decodeHex "script" script) tx
@@ -371,14 +396,14 @@ hx_validsig' tx i out (TxSignature sig sh) pub =
   pubKeyAddr pub == a && verifySig (txSigHash tx out i sh) sig pub
   where a = getOutputAddress (either error id (decodeOutput out))
 
-hx_validsig :: TxFile -> String -> String -> String -> IO ()
+hx_validsig :: TxFile -> BS -> BS -> BS -> IO ()
 hx_validsig file i s sig =
   do tx <- readTxFile file
      interactLn $ putSuccess'
                 . hx_validsig' tx (parseInt "input index" i) (getHex "script" s) (getTxSig sig)
                 . getPubKey
 
-hx_sign_input :: TxFile -> String -> String -> IO ()
+hx_sign_input :: TxFile -> BS -> BS -> IO ()
 hx_sign_input file index script_code =
   do tx <- readTxFile file
      interactLn $ putTxSig . hx_sign_input' tx (parseInt "input index" index) (getHex "script" script_code) . fromWIFE
@@ -390,16 +415,16 @@ hx_sign_input' tx index script_output privkey = sig where
   msg = txSigHash  tx script_output index sh
   sig = TxSignature (detSignMsg msg privkey) sh
 
-hx_rawscript :: String -> String
-hx_rawscript = putHex . parseReadP parseScript
+hx_rawscript :: BS -> BS
+hx_rawscript = putHex . parseReadP parseScript . B8.unpack
 
-hx_showscript :: String -> String
-hx_showscript = showDoc . prettyScript . getHex "script"
+hx_showscript :: BS -> BS
+hx_showscript = B8.pack . showDoc . prettyScript . getHex "script"
 
-hx_showtx :: [String] -> IO ()
-hx_showtx [] = interact $ txDetailedJSON . getHex "transaction"
-hx_showtx ["-"] = interact $ txDetailedJSON . getHex "transaction"
-hx_showtx [file] = putStr . txDetailedJSON =<< readTxFile file
+hx_showtx :: [BS] -> IO ()
+hx_showtx [] = LBS.interact $ txDetailedJSON . getHex "transaction"
+hx_showtx ["-"] = LBS.interact $ txDetailedJSON . getHex "transaction"
+hx_showtx [file] = LBS.putStr . txDetailedJSON =<< readTxFile file
 hx_showtx ("-j":xs) = hx_showtx xs
 hx_showtx ("--json":xs) = hx_showtx xs
 hx_showtx _ = error "Usage: hx showtx [-j|--json] [<TXFILE>]"
@@ -412,14 +437,14 @@ chksum32_decode d | chksum32 pre == decode' post = pre
                   | otherwise                    = error "checksum does not match"
   where (pre,post) = BS.splitAt (BS.length d - 4) d
 
-hx_chksum32 :: [String] -> String
-hx_chksum32 = withHex (encode' . chksum32) . concat
+hx_chksum32 :: [BS] -> BS
+hx_chksum32 = withHex (encode' . chksum32) . BS.concat
 
-hx_chksum32_encode :: [String] -> String
-hx_chksum32_encode = withHex chksum32_encode . concat
+hx_chksum32_encode :: [BS] -> BS
+hx_chksum32_encode = withHex chksum32_encode . BS.concat
 
-hx_chksum32_decode :: [String] -> String
-hx_chksum32_decode = withHex chksum32_decode . concat
+hx_chksum32_decode :: [BS] -> BS
+hx_chksum32_decode = withHex chksum32_decode . BS.concat
 
 hx_ec_double :: Hex s => [s] -> s
 hx_ec_double [p] = putPoint $ doublePoint (getPoint p)
@@ -445,11 +470,11 @@ hx_ec_add_modn :: Hex s => [s] -> s
 hx_ec_add_modn [x, y] = putHexN $ getHexN x + getHexN y
 hx_ec_add_modn _      = error "Usage: hx ec-add-modn <HEX-FIELDN> <HEX-FIELDN>"
 
-hx_ec_int_modp :: [String] -> String
+hx_ec_int_modp :: [BS] -> BS
 hx_ec_int_modp [x] = putHexP $ getDecModP x
 hx_ec_int_modp _   = error "Usage: hx ec-int-modp [<DECIMAL-INTEGER>]"
 
-hx_ec_int_modn :: [String] -> String
+hx_ec_int_modn :: [BS] -> BS
 hx_ec_int_modn [x] = putHexN $ getDecModN x
 hx_ec_int_modn _   = error "Usage: hx ec-int-modn [<DECIMAL-INTEGER>]"
 
@@ -461,7 +486,7 @@ hx_ec_y :: Hex s => [s] -> s
 hx_ec_y [p] = putHexP . fromMaybe (error "invalid point") . getY $ getPoint p
 hx_ec_y _   = error "Usage: hx ec-y [<HEX-POINT>]"
 
-mainArgs :: [String] -> IO ()
+mainArgs :: [BS] -> IO ()
 mainArgs ["addr"]                    = interactLn hx_addr
 mainArgs ("validaddr":args)          = interactArgLn "hx validaddr [<ADDRESS>]" hx_validaddr args
 mainArgs ["encode-addr", "--script"] = interactLn $ hx_encode_addr ScriptAddress
@@ -469,7 +494,7 @@ mainArgs ["encode-addr"]             = interactLn $ hx_encode_addr PubKeyAddress
 mainArgs ["decode-addr"]             = interactLn hx_decode_addr
 
 mainArgs ("pubkey":args)             = interactLn $ hx_pubkey args
-mainArgs ("brainwallet":args)        = putStrLn $ hx_brainwallet args
+mainArgs ("brainwallet":args)        = B8.putStrLn $ hx_brainwallet args
 mainArgs ["wif-to-secret"]           = interactLn hx_wif_to_secret
 mainArgs ["secret-to-wif"]           = interactLn hx_secret_to_wif
 mainArgs ["compress"]                = interactLn hx_compress
@@ -501,9 +526,9 @@ mainArgs ("base58check-encode":args) = interactLn $ hx_base58check_encode args
 mainArgs ("base58check-decode":args) = interactLn $ hx_base58check_decode args
 mainArgs ["integer"]                 = interactLn $ showB8 . bsToInteger . decodeHex "input"
 mainArgs ["hex-encode"]              = interactLn encodeHex
-mainArgs ["hex-decode"]              = interact $ decodeHex "input"
+mainArgs ["hex-decode"]              = BS.interact $ decodeHex "input"
 mainArgs ["encode-hex"]{-deprecated-}= interactLn encodeHex
-mainArgs ["decode-hex"]{-deprecated-}= interact $ decodeHex "input"
+mainArgs ["decode-hex"]{-deprecated-}= BS.interact $ decodeHex "input"
 
 mainArgs ["ripemd-hash"]             = interactLn $ encodeHex . hash160BS . hash256BS
 mainArgs ["ripemd160"]               = interactHex hash160BS
@@ -533,7 +558,7 @@ mainArgs ("ec-int-modn":args)        = interactArgsLn hx_ec_int_modn args
 mainArgs ("ec-x":args)               = interactArgsLn hx_ec_x args
 mainArgs ("ec-y":args)               = interactArgsLn hx_ec_y args
 
-mainArgs ("mktx":file:args)          = BS.writeFile file $ hx_mktx args
+mainArgs ("mktx":file:args)          = BS.writeFile (B8.unpack file) $ hx_mktx args
 mainArgs ["sign-input",f,i,s]        = hx_sign_input f i s
 mainArgs ["set-input",f,i,s]         = hx_set_input f i s
 mainArgs ["validsig",f,i,s,sig]      = hx_validsig f i s sig
@@ -542,7 +567,7 @@ mainArgs ("showtx":args)             = hx_showtx args
 mainArgs ("verifysig-modn":args)     = interactArgsLn hx_verifysig_modn args
 mainArgs ("signmsg-modn":args)       = interactArgsLn hx_signmsg_modn   args
 
-mainArgs ("rawscript":args)          = interactArgsLn (hx_rawscript . unwords) args
+mainArgs ("rawscript":args)          = interactArgsLn (hx_rawscript . B8.unwords) args
 mainArgs ["showscript"]              = interactLn $ hx_showscript
 
 mainArgs ["electrum-mpk"]            = interactLn   hx_electrum_mpk
@@ -686,4 +711,4 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ]
 
 main :: IO ()
-main = mainArgs =<< getArgs
+main = mainArgs . map B8.pack =<< getArgs
