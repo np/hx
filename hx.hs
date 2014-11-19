@@ -558,7 +558,7 @@ mainArgs ("ec-int-modn":args)        = interactArgsLn hx_ec_int_modn args
 mainArgs ("ec-x":args)               = interactArgsLn hx_ec_x args
 mainArgs ("ec-y":args)               = interactArgsLn hx_ec_y args
 
-mainArgs ("mktx":file:args)          = BS.writeFile (B8.unpack file) $ hx_mktx args
+mainArgs ("mktx":file:args)          = interactFileArgs hx_mktx file args
 mainArgs ["sign-input",f,i,s]        = hx_sign_input f i s
 mainArgs ["set-input",f,i,s]         = hx_set_input f i s
 mainArgs ["validsig",f,i,s,sig]      = hx_validsig f i s sig

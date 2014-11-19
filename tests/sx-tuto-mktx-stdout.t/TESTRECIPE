@@ -1,0 +1,42 @@
+#!/bin/bash
+
+testname=sx-tuto-mktx-stdout.t
+command=hx
+args=( mktx - --input 97e06e49dfdd26c5a904670971ccf4c7fe7d9da53cb379bf9b442fc9427080b3:1 --output 1MyKMeDsom7rYcp69KpbKn4DcyuvLMkLYJ:90000 )
+exit_code=0
+stdin_file=/dev/null
+stdout_file=stdout
+stderr_file=/dev/null
+sources=( )
+products=( )
+
+# Environment variables:
+env_vars=( )
+
+setup(){
+  : Perform here actions to be run before the tested program
+}
+
+munge(){
+  : Munge here the results of the tested program to ease the check
+}
+
+check(){
+  check_exit_code &&
+  check_stderr &&
+  check_stdout &&
+  check_products &&
+  : Perform here extra checks on the tested program
+}
+
+explain(){
+  explain_exit_code
+  explain_stdout
+  explain_stderr
+  explain_products
+  : Explain here more potential differences
+}
+
+teardown(){
+  : Undo here the actions of setup
+}
