@@ -343,6 +343,17 @@ hx_brainwallet _             = error . brainwallet_usage $ "too many arguments"
 brainwallet_usage :: String -> String
 brainwallet_usage msg = unlines [msg, "Usage: hx brainwallet <PASSPHRASE>"]
 
+getSig :: String -> Signature
+getSig = getHex "signature"
+
+hx_verifysig_modn :: [String] -> String
+hx_verifysig_modn [msg,pub,sig] = putSuccess $ verifySig (fromIntegral $ getDecStrictN msg) (getSig sig) (getPubKey pub)
+hx_verifysig_modn _ = error "Usage: hx verifysig-modn <MESSAGE-DECIMAL-INTEGER> <PUBKEY> <SIGNATURE>"
+
+hx_signmsg_modn :: [String] -> String
+hx_signmsg_modn [msg,prv] = putHex $ detSignMsg (fromIntegral $ getDecStrictN msg) (fromWIFE prv)
+hx_signmsg_modn _ = error "Usage: hx signmsg-modn <MESSAGE-DECIMAL-INTEGER> <PRIVKEY>"
+
 -- set-input FILENAME N SIGNATURE_AND_PUBKEY_SCRIPT
 hx_set_input :: FilePath -> String -> String -> IO ()
 hx_set_input file index script =
@@ -433,11 +444,11 @@ hx_ec_add_modn [x, y] = putHexN $ getHexN x + getHexN y
 hx_ec_add_modn _      = error "Usage: hx ec-add-modn <HEX-FIELDN> <HEX-FIELDN>"
 
 hx_ec_int_modp :: [String] -> String
-hx_ec_int_modp [x] = putHexP $ getDecP x
+hx_ec_int_modp [x] = putHexP $ getDecModP x
 hx_ec_int_modp _   = error "Usage: hx ec-int-modp [<DECIMAL-INTEGER>]"
 
 hx_ec_int_modn :: [String] -> String
-hx_ec_int_modn [x] = putHexN $ getDecN x
+hx_ec_int_modn [x] = putHexN $ getDecModN x
 hx_ec_int_modn _   = error "Usage: hx ec-int-modn [<DECIMAL-INTEGER>]"
 
 hx_ec_x :: Hex s => [s] -> s
@@ -525,6 +536,9 @@ mainArgs ["sign-input",f,i,s]        = hx_sign_input f i s
 mainArgs ["set-input",f,i,s]         = hx_set_input f i s
 mainArgs ["validsig",f,i,s,sig]      = hx_validsig f i s sig
 mainArgs ("showtx":args)             = hx_showtx args
+
+mainArgs ("verifysig-modn":args)     = interactArgsLn hx_verifysig_modn args
+mainArgs ("signmsg-modn":args)       = interactArgsLn hx_signmsg_modn   args
 
 mainArgs ("rawscript":args)          = interactArgsLn (hx_rawscript . unwords) args
 mainArgs ["showscript"]              = interactLn $ hx_showscript

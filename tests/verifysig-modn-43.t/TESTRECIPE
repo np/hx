@@ -1,0 +1,42 @@
+#!/bin/bash
+
+testname=verifysig-modn-43.t
+command=hx
+args=( verifysig-modn 43 0478d430274f8c5ec1321338151e9f27f4c676a008bdf8638d07c0b6be9ab35c71a1518063243acd4dfe96b66e3f2ec8013c8e072cd09b3834a19f81f659cc3455 - )
+exit_code=0
+stdin_file=stdin
+stdout_file=stdout
+stderr_file=/dev/null
+sources=( )
+products=( )
+
+# Environment variables:
+env_vars=( )
+
+setup(){
+  : Perform here actions to be run before the tested program
+}
+
+munge(){
+  : Munge here the results of the tested program to ease the check
+}
+
+check(){
+  check_exit_code &&
+  check_stderr &&
+  check_stdout &&
+  check_products &&
+  : Perform here extra checks on the tested program
+}
+
+explain(){
+  explain_exit_code
+  explain_stdout
+  explain_stderr
+  explain_products
+  : Explain here more potential differences
+}
+
+teardown(){
+  : Undo here the actions of setup
+}

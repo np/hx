@@ -16,7 +16,7 @@ import qualified Data.ByteString.Lazy.Char8 as LB8
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Base16 as B16
 import Network.Haskoin.Crypto
-import Network.Haskoin.Internals (FieldP, FieldN, getBigWordInteger, Point, curveN)
+import Network.Haskoin.Internals (FieldP, FieldN, getBigWordInteger, Point, curveN, curveP)
 import Network.Haskoin.Util
 
 subst :: Eq a => (a,a) -> a -> a
@@ -127,12 +127,17 @@ getHex msg = decode' . decodeHex msg
 withHex :: (Hex s, Hex s', Monoid s', IsString s') => (BS -> BS) -> s -> s'
 withHex f = putLn . encodeHex . f . decodeHex "input"
 
+integerN :: Integer -> FieldN
+integerN i | i < curveN = fromInteger i
+           | otherwise  = error $ "Integer not in FieldN: " ++ show i
+
+integerP :: Integer -> FieldP
+integerP i | i < curveP = fromInteger i
+           | otherwise  = error $ "Integer not in FieldP: " ++ show i
+
 -- Non DER
 getFieldN :: Get FieldN
-getFieldN = do
-  i <- getBigWordInteger <$> (get :: Get Word256)
-  unless (i < curveN) (fail $ "Get: Integer not in FieldN: " ++ show i)
-  return $ fromInteger i
+getFieldN = integerN . getBigWordInteger <$> (get :: Get Word256)
 
 -- Non DER
 putFieldN :: FieldN -> Put
@@ -150,11 +155,18 @@ getHexP = getHex "field number modulo P"
 putHexP :: Hex s => FieldP -> s
 putHexP = putHex
 
-getDecN :: String -> FieldN
-getDecN = fromInteger . readDigits "integer modulo n in decimal"
+getDecModN :: String -> FieldN
+getDecModN = fromInteger . readDigits "integer modulo n in decimal"
 
-getDecP :: String -> FieldP
-getDecP = fromInteger . readDigits "integer modulo p in decimal"
+getDecModP :: String -> FieldP
+getDecModP = fromInteger . readDigits "integer modulo p in decimal"
+
+getDecStrictN :: String -> FieldN
+getDecStrictN = integerN . readDigits "integer modulo n in decimal"
+
+getDecStrictP :: String -> FieldP
+getDecStrictP = integerP . readDigits "integer modulo p in decimal"
+
 
 putHex256 :: Hex s => Word256 -> s
 putHex256 = putHex

@@ -1,0 +1,42 @@
+#!/bin/bash
+
+testname=signmsg-modn-p-is-too-big.t
+command=hx
+args=( signmsg-modn 115792089237316195423570985008687907853269984665640564039457584007908834671663 - )
+exit_code=1
+stdin_file=stdin
+stdout_file=/dev/null
+stderr_file=stderr
+sources=( )
+products=( )
+
+# Environment variables:
+env_vars=( )
+
+setup(){
+  : Perform here actions to be run before the tested program
+}
+
+munge(){
+  : Munge here the results of the tested program to ease the check
+}
+
+check(){
+  check_exit_code &&
+  check_stderr &&
+  check_stdout &&
+  check_products &&
+  : Perform here extra checks on the tested program
+}
+
+explain(){
+  explain_exit_code
+  explain_stdout
+  explain_stderr
+  explain_products
+  : Explain here more potential differences
+}
+
+teardown(){
+  : Undo here the actions of setup
+}
