@@ -2,9 +2,11 @@ FROM quay.io/np__/haskell
 
 MAINTAINER Nicolas Pouillard [https://nicolaspouillard.fr]
 
-#RUN apt-get update && apt-get install ${OPTS_APT} git
-ADD . /hx
+ADD https://github.com/np/cmdcheck/raw/master/cmdcheck /usr/bin/cmdcheck
+RUN cabal update && cabal install haskoin base16-bytestring scientific binary RFC1751 aeson
+
+ADD   . /hx
 WORKDIR /hx
-RUN cabal update && cabal install
-RUN curl -O cmdcheck https://github.com/np/cmdcheck/raw/master/cmdcheck
-RUN ./cmdcheck tests/*.t
+RUN     cabal install
+RUN     /usr/bin/cmdcheck tests/*.t
+#RUN apt-get update && apt-get install ${OPTS_APT} lib-ghc...
