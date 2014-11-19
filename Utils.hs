@@ -3,7 +3,6 @@ module Utils where
 
 import qualified Prelude as Prelude
 import Prelude hiding (interact, putStr)
-import Control.Monad (unless)
 import Data.Binary
 import Data.Char (isSpace,isDigit,toLower)
 import Data.Functor ((<$>))

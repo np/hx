@@ -33,7 +33,9 @@ import DetailedTx (txDetailedJSON)
 import Utils
 import Electrum
 
-readTxFile :: FilePath -> IO Tx
+type TxFile = FilePath
+
+readTxFile :: TxFile -> IO Tx
 readTxFile file = getHex "transaction" <$> BS.readFile file
 
 one_btc_in_satoshi :: Num a => a
@@ -157,7 +159,7 @@ mktx_args ( "--input":input :args) = Left (readOutPoint input) : mktx_args args
 mktx_args (      "-i":input :args) = Left (readOutPoint input) : mktx_args args
 mktx_args ("--output":output:args) = Right (readOutput output) : mktx_args args
 mktx_args (      "-o":output:args) = Right (readOutput output) : mktx_args args
-mktx_args _ = error "mktx_args: unexpected argument"
+mktx_args (arg:_) = error $ "mktx_args: unexpected argument " ++ show arg
 
 putTxSig :: Hex s => TxSignature -> s
 putTxSig = encodeHex . encodeSig
@@ -355,7 +357,7 @@ hx_signmsg_modn [msg,prv] = putHex $ detSignMsg (fromIntegral $ getDecStrictN ms
 hx_signmsg_modn _ = error "Usage: hx signmsg-modn <MESSAGE-DECIMAL-INTEGER> <PRIVKEY>"
 
 -- set-input FILENAME N SIGNATURE_AND_PUBKEY_SCRIPT
-hx_set_input :: FilePath -> String -> String -> IO ()
+hx_set_input :: TxFile -> String -> String -> IO ()
 hx_set_input file index script =
   do tx <- readTxFile file
      B8.putStrLn . putHex $ hx_set_input' (parseInt "input index" index) (decodeHex "script" script) tx
@@ -369,14 +371,14 @@ hx_validsig' tx i out (TxSignature sig sh) pub =
   pubKeyAddr pub == a && verifySig (txSigHash tx out i sh) sig pub
   where a = getOutputAddress (either error id (decodeOutput out))
 
-hx_validsig :: FilePath -> String -> String -> String -> IO ()
+hx_validsig :: TxFile -> String -> String -> String -> IO ()
 hx_validsig file i s sig =
   do tx <- readTxFile file
      interactLn $ putSuccess'
                 . hx_validsig' tx (parseInt "input index" i) (getHex "script" s) (getTxSig sig)
                 . getPubKey
 
-hx_sign_input :: FilePath -> String -> String -> IO ()
+hx_sign_input :: TxFile -> String -> String -> IO ()
 hx_sign_input file index script_code =
   do tx <- readTxFile file
      interactLn $ putTxSig . hx_sign_input' tx (parseInt "input index" index) (getHex "script" script_code) . fromWIFE
@@ -684,4 +686,4 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ]
 
 main :: IO ()
-main = getArgs >>= mainArgs
+main = mainArgs =<< getArgs
