@@ -8,5 +8,5 @@ RUN cabal update && cabal install haskoin base16-bytestring scientific binary RF
 ADD   . /hx
 WORKDIR /hx
 RUN     cabal install
-RUN     /usr/bin/cmdcheck tests/*.t
+RUN     chmod +x /usr/bin/cmdcheck && /usr/bin/cmdcheck tests/*.t
 #RUN apt-get update && apt-get install ${OPTS_APT} lib-ghc...
