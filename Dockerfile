@@ -10,5 +10,5 @@ RUN     cabal install
 ADD     https://github.com/np/cmdcheck/raw/master/cmdcheck /hx/cmdcheck
 RUN     chmod +x /hx/cmdcheck && \
         PATH=/hx/dist/build/hx:$PATH \
-          /usr/bin/cmdcheck tests/*.t
+          /hx/cmdcheck tests/*.t
 #RUN apt-get update && apt-get install ${OPTS_APT} lib-ghc...
