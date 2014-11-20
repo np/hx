@@ -12,6 +12,9 @@ import System.Environment
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Lazy as LBS
+import Crypto.MAC.HMAC (hmac)
+import qualified Crypto.Hash.SHA224 as SHA224 (hash)
+import qualified Crypto.Hash.SHA384 as SHA384 (hash)
 
 import Network.Haskoin.Crypto
 import Network.Haskoin.Internals ( curveP, curveN, curveG, integerA, integerB
@@ -429,6 +432,10 @@ hx_showtx ("-j":xs) = hx_showtx xs
 hx_showtx ("--json":xs) = hx_showtx xs
 hx_showtx _ = error "Usage: hx showtx [-j|--json] [<TXFILE>]"
 
+hx_hmac :: String -> (BS -> BS) -> Int -> [BS] -> BS
+hx_hmac _ h s [key,input] = encodeHex $ hmac h s (decodeHex "hmac key" key) (decodeHex "hmac data" input)
+hx_hmac m _ _ _           = error $ "hx hmac-" ++ m ++ " <KEY> [<INPUT>]"
+
 chksum32_encode :: BS -> BS
 chksum32_encode d = d <> encode' (chksum32 d)
 
@@ -536,6 +543,11 @@ mainArgs ["sha256"]                  = interactHex hash256BS
 mainArgs ["sha1"]                    = interactHex hashSha1BS
 mainArgs ["hash256"]                 = interactHex $ hash256BS . hash256BS
 mainArgs ["hash160"]                 = interactHex $ hash160BS . hash256BS
+
+mainArgs ("hmac-sha224":args)        = interactArgsLn (hx_hmac "sha224" SHA224.hash 64)  args
+mainArgs ("hmac-sha256":args)        = interactArgsLn (hx_hmac "sha256" hash256BS   64)  args
+mainArgs ("hmac-sha384":args)        = interactArgsLn (hx_hmac "sha384" SHA384.hash 128) args
+mainArgs ("hmac-sha512":args)        = interactArgsLn (hx_hmac "sha512" hash512BS   128) args
 
 mainArgs ("chksum32":args)           = interactArgs hx_chksum32        args
 mainArgs ("chksum32-encode":args)    = interactArgs hx_chksum32_encode args
@@ -677,6 +689,12 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx sha1                                   [0]"
                              ,"hx hash160                                [0]"
                              ,"hx hash256                                [0]"
+                             ,""
+                             ,"# HASH BASED MACs"
+                             ,"hx hmac-sha224 <KEY> [<INPUT>]            [0]"
+                             ,"hx hmac-sha256 <KEY> [<INPUT>]            [0]"
+                             ,"hx hmac-sha384 <KEY> [<INPUT>]            [0]"
+                             ,"hx hmac-sha512 <KEY> [<INPUT>]            [0]"
                              ,""
                              ,"[0]: Not available in sx"
                              ,"[1]: `hx showtx` is always using JSON output,"

@@ -1,0 +1,43 @@
+#!/bin/bash
+
+testname=hmac-sha384-test-vector-5.t
+command=hx
+args=( hmac-sha384 0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c 546573742057697468205472756e636174696f6e )
+exit_code=0
+stdin_file=/dev/null
+stdout_file=stdout
+stderr_file=/dev/null
+sources=( )
+products=( )
+
+# Environment variables:
+env_vars=( )
+
+setup(){
+  : Perform here actions to be run before the tested program
+}
+
+munge(){
+  : Munge here the results of the tested program to ease the check
+  head -c32 <stdout | sponge stdout
+}
+
+check(){
+  check_exit_code &&
+  check_stderr &&
+  check_stdout &&
+  check_products &&
+  : Perform here extra checks on the tested program
+}
+
+explain(){
+  explain_exit_code
+  explain_stdout
+  explain_stderr
+  explain_products
+  : Explain here more potential differences
+}
+
+teardown(){
+  : Undo here the actions of setup
+}
