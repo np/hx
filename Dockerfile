@@ -9,5 +9,6 @@ WORKDIR /hx
 RUN     cabal install
 ADD     https://github.com/np/cmdcheck/raw/master/cmdcheck /hx/cmdcheck
 RUN     PATH=/hx/dist/build/hx:$PATH \
-          bash -e /hx/cmdcheck tests/*.t || echo "Tests failed!"
+          bash -e /hx/cmdcheck --log=/hx/tests.log tests/*.t || echo "Tests failed!"
+RUN     cat /hx/tests.log
 #RUN apt-get update && apt-get install ${OPTS_APT} lib-ghc...
