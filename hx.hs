@@ -538,11 +538,11 @@ mainArgs ["encode-hex"]{-deprecated-}= interactLn encodeHex
 mainArgs ["decode-hex"]{-deprecated-}= BS.interact $ decodeHex "input"
 
 mainArgs ["ripemd-hash"]             = interactLn $ encodeHex . hash160BS . hash256BS
-mainArgs ["ripemd160"]               = interactHex hash160BS
-mainArgs ["sha256"]                  = interactHex hash256BS
-mainArgs ["sha1"]                    = interactHex hashSha1BS
-mainArgs ["hash256"]                 = interactHex $ hash256BS . hash256BS
-mainArgs ["hash160"]                 = interactHex $ hash160BS . hash256BS
+mainArgs ("ripemd160":args)          = interactHex "hx ripemd160 [<HEX-INPUT>]" hash160BS               args
+mainArgs ("sha256":args)             = interactHex "hx sha256    [<HEX-INPUT>]" hash256BS               args
+mainArgs ("sha1":args)               = interactHex "hx sha1      [<HEX-INPUT>]" hashSha1BS              args
+mainArgs ("hash256":args)            = interactHex "hx hash256   [<HEX-INPUT>]" doubleHash256BS         args
+mainArgs ("hash160":args)            = interactHex "hx hash160   [<HEX-INPUT>]" (hash160BS . hash256BS) args
 
 mainArgs ("hmac-sha224":args)        = interactArgsLn (hx_hmac "sha224" SHA224.hash 64)  args
 mainArgs ("hmac-sha256":args)        = interactArgsLn (hx_hmac "sha256" hash256BS   64)  args
@@ -683,18 +683,18 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx chksum32-decode <HEX>*"
                              ,""
                              ,"# HASHING"
-                             ,"hx ripemd-hash"
-                             ,"hx sha256"
-                             ,"hx ripemd160                              [0]"
-                             ,"hx sha1                                   [0]"
-                             ,"hx hash160                                [0]"
+                             ,"hx ripemd-hash                            [4]"
+                             ,"hx sha256      [<HEX-INPUT>]"
+                             ,"hx ripemd160   [<HEX-INPUT>]              [0]"
+                             ,"hx sha1        [<HEX-INPUT>]              [0]"
+                             ,"hx hash160     [<HEX-INPUT>]              [0]"
                              ,"hx hash256                                [0]"
                              ,""
                              ,"# HASH BASED MACs"
-                             ,"hx hmac-sha224 <KEY> [<INPUT>]            [0]"
-                             ,"hx hmac-sha256 <KEY> [<INPUT>]            [0]"
-                             ,"hx hmac-sha384 <KEY> [<INPUT>]            [0]"
-                             ,"hx hmac-sha512 <KEY> [<INPUT>]            [0]"
+                             ,"hx hmac-sha224 <KEY> [<HEX-NPUT>]         [0]"
+                             ,"hx hmac-sha256 <KEY> [<HEX-NPUT>]         [0]"
+                             ,"hx hmac-sha384 <KEY> [<HEX-NPUT>]         [0]"
+                             ,"hx hmac-sha512 <KEY> [<HEX-NPUT>]         [0]"
                              ,""
                              ,"[0]: Not available in sx"
                              ,"[1]: `hx showtx` is always using JSON output,"
@@ -714,6 +714,11 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"[3]: Rounding is done upward in `hx` and downard in `sx`."
                              ,"     So they agree `btc 1.4` and `btc 1.9` but on `btc 1.5`,"
                              ,"     `hx` returns `0.00000002` and `sx` returns `0.00000001`."
+                             ,"[4]: The `ripemd-hash` command is taking raw-bytes as input,"
+                             ,"     while the other hashing commands are taking hexadecimal encoded inputs."
+                             ,"     This is for this reason that `hash160` has been added"
+                             ,"     (`hx ripemd-hash` is equivalent to `hx encode-hex | hx hash160`"
+                             ,"     and `hx hash160` is equivalent to `hx decode-hex | hx ripemd-hash`)."
                              ,""
                              ,"PATH      ::= <PATH-HEAD> <PATH-CONT>"
                              ,"PATH-HEAD ::= 'A'   [address (compressed)]"

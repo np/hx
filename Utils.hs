@@ -150,9 +150,6 @@ getPoint = pubKeyPoint . getHex "curve point"
 putPoint :: Hex s => Point -> s
 putPoint = putHex . PubKey
 
-interactHex :: (BS -> BS) -> IO ()
-interactHex f = BS.interact (withHex f :: BS -> BS)
-
 interactArgs' :: (IsString s, Eq s) => (s -> IO ()) -> IO s -> ([s] -> s) -> [s] -> IO ()
 interactArgs' puts gets f [] = puts . f . return =<< gets
 interactArgs' puts gets f xs = case length (filter (=="-") xs) of
@@ -173,6 +170,9 @@ interactArg msg f = interactArgs f'
 
 interactArgLn :: String -> (BS -> BS) -> [BS] -> IO ()
 interactArgLn msg = interactArg msg . (putLn .)
+
+interactHex :: String -> (BS -> BS) -> [BS] -> IO ()
+interactHex msg = interactArg msg . withHex
 
 writeArg :: BS -> BS -> IO ()
 writeArg "-" = BS.putStr

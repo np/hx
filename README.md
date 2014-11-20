@@ -95,12 +95,18 @@ List of supported commands:
     hx chksum32-decode <HEX>*
 
     # HASHING
-    hx ripemd-hash
-    hx sha256
-    hx ripemd160                              [0]
-    hx sha1                                   [0]
-    hx hash160                                [0]
+    hx ripemd-hash                            [4]
+    hx sha256      [<HEX-INPUT>]
+    hx ripemd160   [<HEX-INPUT>]              [0]
+    hx sha1        [<HEX-INPUT>]              [0]
+    hx hash160     [<HEX-INPUT>]              [0]
     hx hash256                                [0]
+
+    # HASH BASED MACs
+    hx hmac-sha224 <KEY> [<HEX-NPUT>]         [0]
+    hx hmac-sha256 <KEY> [<HEX-NPUT>]         [0]
+    hx hmac-sha384 <KEY> [<HEX-NPUT>]         [0]
+    hx hmac-sha512 <KEY> [<HEX-NPUT>]         [0]
 
     [0]: Not available in sx
     [1]: `hx showtx` is always using JSON output,
@@ -120,6 +126,11 @@ List of supported commands:
     [3]: Rounding is done upward in `hx` and downard in `sx`.
          So they agree `btc 1.4` and `btc 1.9` but on `btc 1.5`,
          `hx` returns `0.00000002` and `sx` returns `0.00000001`.
+    [4]: The `ripemd-hash` command is taking raw-bytes as input,
+         while the other hashing commands are taking hexadecimal encoded inputs.
+         This is for this reason that `hash160` has been added
+         (`hx ripemd-hash` is equivalent to `hx encode-hex | hx hash160`
+         and `hx hash160` is equivalent to `hx decode-hex | hx ripemd-hash`).
 
     PATH      ::= <PATH-HEAD> <PATH-CONT>
     PATH-HEAD ::= 'A'   [address (compressed)]
