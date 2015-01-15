@@ -2,19 +2,29 @@
 module DetailedTx where
 
 import Data.Aeson hiding (decode')
+import Data.Aeson.Types (Pair)
 import qualified Data.ByteString.Lazy as LBS
+import qualified Data.Text as T
 
-import Network.Haskoin.Crypto (txHash)
+import Network.Haskoin.Crypto (txHash,pubKeyAddr,addrToBase58,derivePubKey,toWIF)
 import Network.Haskoin.Internals (Tx(..), TxIn(..), TxOut(..)
                                  ,scriptSender, scriptRecipient
+                                 ,XPrvKey(..),XPubKey(..)
+                                 ,xPrvIsPrime,xPrvChild,xPubIsPrime,xPubChild
                                  )
 import Network.Haskoin.Util (eitherToMaybe,decode')
+import Utils (putHex)
 
 import PrettyScript (showDoc, prettyScript)
+
+(.=$) :: T.Text -> String -> Pair
+(.=$) x y = x .= y
 
 newtype DetailedTx    = DetailedTx    { _unDetailedTx    :: Tx    }
 newtype DetailedTxIn  = DetailedTxIn  { _unDetailedTxIn  :: TxIn  }
 newtype DetailedTxOut = DetailedTxOut { _unDetailedTxOut :: TxOut }
+newtype DetailedXPrvKey = DetailedXPrvKey { _unDetailedXPrvKey :: XPrvKey }
+newtype DetailedXPubKey = DetailedXPubKey { _unDetailedXPubKey :: XPubKey }
 
 instance ToJSON DetailedTx where
   toJSON (DetailedTx tx) =
@@ -44,6 +54,39 @@ instance ToJSON DetailedTxOut where
       ,"address" .= eitherToMaybe (scriptRecipient script)
       ]
     where script = decode' $ scriptOutput o
+
+instance ToJSON DetailedXPrvKey where
+  toJSON (DetailedXPrvKey k) =
+    object
+      ["type"    .=$ "xprv"
+      ,"depth"   .=  xPrvDepth k
+      ,"parent"  .=  xPrvParent k
+      ,"index"   .=  object ["value" .= xPrvIndex k
+                            ,(if xPrvIsPrime k then "hard" else "soft") .= xPrvChild k
+                            ]
+      ,"chain"   .=  xPrvChain k
+      ,"prvkey"  .=  toWIF (xPrvKey k)
+      ,"pubkey"  .=$ putHex pub
+      ,"address" .=  addrToBase58 addr
+      ]
+   where pub  = derivePubKey (xPrvKey k)
+         addr = pubKeyAddr pub
+
+instance ToJSON DetailedXPubKey where
+  toJSON (DetailedXPubKey k) =
+    object
+      ["type"    .=$ "xpub"
+      ,"depth"   .=  xPubDepth k
+      ,"parent"  .=  xPubParent k
+      ,"index"   .=  object ["value" .= xPubIndex k
+                            ,(if xPubIsPrime k then "hard" else "soft") .= xPubChild k
+                            ]
+      ,"chain"   .=  xPubChain k
+      ,"pubkey"  .=$ putHex pub
+      ,"address" .=  addrToBase58 addr
+      ]
+   where pub  = xPubKey k
+         addr = pubKeyAddr pub
 
 txDetailedJSON :: Tx -> LBS.ByteString
 txDetailedJSON = encode . toJSON . DetailedTx

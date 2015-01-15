@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings, TypeSynonymInstances, FlexibleInstances #-}
+import qualified Data.Aeson as A
 import Data.Maybe
 import Data.Either (partitionEithers)
 import Data.Word
@@ -31,7 +32,7 @@ import Network.Haskoin.Util
 import PrettyScript
 import ParseScript
 import Mnemonic (hex_to_mn, mn_to_hex)
-import DetailedTx (txDetailedJSON)
+import DetailedTx (txDetailedJSON,DetailedXPrvKey(..),DetailedXPubKey(..))
 import Utils
 import Electrum
 
@@ -100,6 +101,9 @@ xKeyImport s
 
 xKeyImportE :: BS -> XKey
 xKeyImportE = fromMaybe (error "invalid extended public or private key") . xKeyImport . ignoreSpaces
+
+xKeyDetails :: XKey -> BS
+xKeyDetails = toStrictBS . A.encode . onXKey (A.toJSON . DetailedXPrvKey) (A.toJSON . DetailedXPubKey)
 
 pubXKey :: XKey -> XPubKey
 pubXKey (XPub k) = k
@@ -286,6 +290,9 @@ hx_hd_path mp =
   case B8.unpack mp of
     []    -> error "Empty path"
     (m:p) -> xKeyExportC m . derivePath p . xKeyImportE
+
+hx_hd_decode :: BS -> BS
+hx_hd_decode = xKeyDetails . xKeyImportE
 
 hx_bip39_mnemonic :: Hex s => s -> BS
 hx_bip39_mnemonic = either error B8.pack . toMnemonic . decodeHex "seed"
@@ -515,6 +522,7 @@ mainArgs ["hd-priv", "--hard", i]    = interactLn . hx_hd_priv $ Just (primeSubK
 mainArgs ["hd-pub"]                  = interactLn $ hx_hd_pub    Nothing
 mainArgs ["hd-pub", i]               = interactLn . hx_hd_pub  . Just $ parseWord32 "hd-pub index" i
 mainArgs ["hd-path", p]              = interactLn $ hx_hd_path p
+mainArgs ["hd-decode"]               = interactLn hx_hd_decode
 mainArgs ["hd-to-wif"]               = interactLn hx_hd_to_wif
 mainArgs ["hd-to-pubkey"]            = interactLn hx_hd_to_pubkey
 mainArgs ["hd-to-address"]           = interactLn hx_hd_to_address
@@ -628,6 +636,7 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx hd-pub                                 [0]"
                              ,"hx hd-pub <INDEX>"
                              ,"hx hd-path <PATH>                         [0]"
+                             ,"hx hd-decode                              [0]"
                              ,"hx hd-to-wif"
                              ,"hx hd-to-address"
                              ,"hx hd-to-pubkey                           [0]"
