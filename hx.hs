@@ -69,7 +69,8 @@ decodeBase58E :: BS -> BS
 decodeBase58E = fromMaybe (error "invalid base58 encoding") . decodeBase58 . ignoreSpaces
 
 xPrvImportBS :: BS -> Maybe XPrvKey
-xPrvImportBS = xPrvImport . B8.unpack
+xPrvImportBS s | "xprv" `BS.isPrefixOf` s = xPrvImport (B8.unpack s)
+               | otherwise                = makeXPrvKey (decodeHex "seed" s)
 
 xPubImportBS :: BS -> Maybe XPubKey
 xPubImportBS = xPubImport . B8.unpack
@@ -83,16 +84,19 @@ xPubExportBS = B8.pack . xPubExport
 xPrvImportE :: BS -> XPrvKey
 xPrvImportE = fromMaybe (error "invalid extended private key") . xPrvImportBS . ignoreSpaces
 
-xPubImportE :: BS -> XPubKey
-xPubImportE = fromMaybe (error "invalid extended public key") . xPubImportBS . ignoreSpaces
-
 data XKey = XPub XPubKey | XPrv XPrvKey
+
+onXKey :: (XPrvKey -> a) -> (XPubKey -> a) -> XKey -> a
+onXKey onXPrv _      (XPrv k) = onXPrv k
+onXKey _      onXPub (XPub k) = onXPub k
+
+mapXKey :: (XPrvKey -> XPrvKey) -> (XPubKey -> XPubKey) -> XKey -> XKey
+mapXKey onXPrv onXPub = onXKey (XPrv . onXPrv) (XPub . onXPub)
 
 xKeyImport :: BS -> Maybe XKey
 xKeyImport s
-  | "xprv" `BS.isPrefixOf` s = XPrv <$> xPrvImportBS s
   | "xpub" `BS.isPrefixOf` s = XPub <$> xPubImportBS s
-  | otherwise             = Nothing
+  | otherwise                = XPrv <$> xPrvImportBS s
 
 xKeyImportE :: BS -> XKey
 xKeyImportE = fromMaybe (error "invalid extended public or private key") . xKeyImport . ignoreSpaces
@@ -102,28 +106,27 @@ pubXKey (XPub k) = k
 pubXKey (XPrv k) = deriveXPubKey k
 
 xMasterImportE :: Hex s => s -> XPrvKey
-xMasterImportE = fromMaybe (error "failed to derived private root key from seed") . makeXPrvKey
-               . decodeHex "seed"
+xMasterImportE = fromMaybe (error "failed to derived private root key from seed")
+               . makeXPrvKey . decodeHex "seed"
 
-xPrvExportC :: Char -> XPrvKey -> BS
-xPrvExportC 'A' = addrToBase58BS . xPubAddr . deriveXPubKey
-xPrvExportC 'P' = putHex . xPubKey . deriveXPubKey
-xPrvExportC 'p' = B8.pack . xPrvWIF
-xPrvExportC 'U' = putHex . uncompress . xPubKey . deriveXPubKey
-xPrvExportC 'u' = toWIFBS . uncompress . xPrvKey
-xPrvExportC 'M' = xPubExportBS . deriveXPubKey
-xPrvExportC 'm' = xPrvExportBS
-xPrvExportC  c  = error $ "Root path expected to be m/, M/, A/, P/, p/, U/, or u/ not " ++ c : "/"
+xKeyExportC :: Char -> XKey -> BS
+xKeyExportC 'A' = addrToBase58BS . xPubAddr . pubXKey
+xKeyExportC 'P' = putHex . xPubKey . pubXKey
+xKeyExportC 'U' = putHex . uncompress . xPubKey . pubXKey
+xKeyExportC 'M' = xPubExportBS . pubXKey
+xKeyExportC 'p' = onXKey (B8.pack . xPrvWIF)
+                         (error "Private keys can not be derived from extended public keys (expected P/, U/ or M/ not p/)")
+xKeyExportC 'u' = onXKey (toWIFBS . uncompress . xPrvKey)
+                         (error "Uncompressed private keys can not be derived from extended public keys (expected P/, U/ or M/ not u/)")
+xKeyExportC 'm' = onXKey xPrvExportBS
+                         (error "Extended private keys can not be derived from extended public keys (expected M/ not m/)")
+xKeyExportC  c  = onXKey (error $ "Root path expected to be m/, M/, A/, P/, p/, U/, or u/ not " ++ c : "/")
+                         (error $ "Root path expected to be M/, A/, or P/ not " ++ c : "/")
 
-xPubExportC :: Char -> XPubKey -> BS
-xPubExportC 'A' = addrToBase58BS . xPubAddr
-xPubExportC 'P' = putHex . xPubKey
-xPubExportC 'U' = putHex . uncompress . xPubKey
-xPubExportC 'M' = xPubExportBS
-xPubExportC 'u' = error "Uncompressed private keys can not be derived from extended public keys (expected P/, U/ or M/ not u/)"
-xPubExportC 'p' = error "Private keys can not be derived from extended public keys (expected P/, U/ or M/ not p/)"
-xPubExportC 'm' = error "Extended private keys can not be derived from extended public keys (expected M/ not m/)"
-xPubExportC  c  = error $ "Root path expected to be M/, A/, or P/ not " ++ c : "/"
+{-
+derivePath does not completly subsumes derivePrvPath
+as the type is more precise.
+-}
 
 derivePrvPath :: String -> XPrvKey -> XPrvKey
 derivePrvPath []       = id
@@ -145,6 +148,9 @@ derivePubPath ('/':xs) = goIndex $ span isDigit xs
   goIndex (ys, zs)    = derivePubPath zs . flip pubSubKeyE (read ys)
                         {- This read works because (all isDigit ys && not (null ys)) holds -}
 derivePubPath _ = error "malformed path"
+
+derivePath :: String -> XKey -> XKey
+derivePath p = mapXKey (derivePrvPath p) (derivePubPath p)
 
 fromWIFE :: BS -> PrvKey
 fromWIFE = fromMaybe (error "invalid WIF private key") . fromWIF . B8.unpack . ignoreSpaces
@@ -261,7 +267,6 @@ hx_secret_to_wif = toWIFBS . fromMaybe (error "invalid private key")
 hx_hd_to_wif :: BS -> BS
 hx_hd_to_wif = B8.pack . xPrvWIF . xPrvImportE
 
--- TODO support private keys as well
 hx_hd_to_address :: BS -> BS
 hx_hd_to_address = addrToBase58BS . xPubAddr . pubXKey . xKeyImportE
 
@@ -273,17 +278,14 @@ hx_hd_priv Nothing         = xPrvExportBS . xMasterImportE
 hx_hd_priv (Just (sub, i)) = xPrvExportBS . flip sub i . xPrvImportE
 
 hx_hd_pub :: Maybe Word32 -> BS -> BS
-hx_hd_pub Nothing  = xPubExportBS . deriveXPubKey     . xPrvImportE
-hx_hd_pub (Just i) = xPubExportBS . flip pubSubKeyE i . pubXKey . xKeyImportE
+hx_hd_pub mi = xPubExportBS . f . pubXKey . xKeyImportE
+  where f = maybe id (flip pubSubKeyE) mi
 
 hx_hd_path :: BS -> BS -> BS
-hx_hd_path mp i =
+hx_hd_path mp =
   case B8.unpack mp of
-    [] -> error "Empty path"
-    (m:p)
-      | "xpub" `BS.isPrefixOf` i -> xPubExportC m . derivePubPath p $ xPubImportE    i
-      | "xprv" `BS.isPrefixOf` i -> xPrvExportC m . derivePrvPath p $ xPrvImportE    i
-      | otherwise                -> xPrvExportC m . derivePrvPath p $ xMasterImportE i
+    []    -> error "Empty path"
+    (m:p) -> xKeyExportC m . derivePath p . xKeyImportE
 
 hx_bip39_mnemonic :: Hex s => s -> BS
 hx_bip39_mnemonic = either error B8.pack . toMnemonic . decodeHex "seed"
