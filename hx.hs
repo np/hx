@@ -606,6 +606,8 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,""
                              ,"List of supported commands:"
                              ,""
+                             ,"Command names are case-insensitive: SHA256 is equivalent to sha256."
+                             ,""
                              ,"# ADDRESSES"
                              ,"hx addr"
                              ,"hx validaddr [<ADDRESS>]"
@@ -751,4 +753,6 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ]
 
 main :: IO ()
-main = mainArgs . map B8.pack =<< getArgs
+main = mainArgs . toLowerFirst . map B8.pack =<< getArgs
+  where toLowerFirst []     = []
+        toLowerFirst (x:xs) = B8.map toLower x : xs
