@@ -2,7 +2,7 @@
 
 testname=hex-encode.t
 command=hx
-args=( encode-hex )
+args=( hex-encode )
 exit_code=0
 stdin_file=stdin
 stdout_file=stdout
