@@ -61,6 +61,26 @@ strictReadDigits msg s
 readDigits :: Read a => String -> BS -> a
 readDigits  msg = strictReadDigits msg . ignoreSpaces
 
+get_arg :: String -> String -> [BS] -> (BS, [BS])
+get_arg n u []         = error . unwords $ ["Missing", n ++ ".\nhx", n, u]
+get_arg _ _ (arg:args) = (arg, args)
+
+get_hex_arg :: String -> String -> [BS] -> (BS, [BS])
+get_hex_arg n u []                     = error . unwords $ ["Missing", n ++ ".\nUsage:", u]
+get_hex_arg n u ["--hex"]              = error . unwords $ ["Missing", n ++ "in hexadecimal.\nUsage:", u]
+get_hex_arg n _ ("--hex":hex_arg:args) = (decodeHex n hex_arg, args)
+get_hex_arg _ _ (arg:args)             = (arg, args)
+
+get_int_arg :: String -> String -> [BS] -> (Int, [BS])
+get_int_arg n u []         = error . unwords $ ["Missing", n ++ ".\nUsage:", u]
+get_int_arg n u (arg:args)
+  | B8.all isDigit arg     = (readBS arg, args)
+  | otherwise              = error . unwords $ ["Non-decimal digits for", n ++ ".\nUsage:", u]
+
+no_args :: String -> [BS] -> a -> a
+no_args u [] x = x
+no_args u _  _ = error $ "Too many arguments.\nUsage: " ++ u
+
 parseInt    :: String -> BS -> Int
 parseWord8  :: String -> BS -> Word8
 parseWord32 :: String -> BS -> Word32
