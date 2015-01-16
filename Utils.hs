@@ -3,7 +3,7 @@ module Utils where
 
 import Control.Applicative
 import Data.Binary
-import Data.Char (isSpace,isDigit,toLower)
+import Data.Char (isSpace,isDigit,toLower,isHexDigit)
 import Data.Maybe
 import Data.Monoid
 import Data.String
@@ -42,6 +42,9 @@ instance Hex BS where
 instance Hex LBS.ByteString where
   decodeHex msg = decodeHex msg . toStrictBS
   encodeHex     = toLazyBS . encodeHex
+
+isHex :: String -> Bool
+isHex = all (\ c -> isHexDigit c || isSpace c)
 
 putLn :: (IsString s, Monoid s) => s -> s
 putLn = (<> "\n")

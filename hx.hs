@@ -295,13 +295,15 @@ hx_hd_decode :: BS -> BS
 hx_hd_decode = xKeyDetails . xKeyImportE
 
 hx_bip39_mnemonic :: Hex s => s -> BS
-hx_bip39_mnemonic = either error B8.pack . toMnemonic . decodeHex "seed"
+hx_bip39_mnemonic = either error B8.pack . toMnemonic . decodeHex "mnemonic-as-hex"
 
 hx_bip39_hex :: Hex s => BS -> s
 hx_bip39_hex = encodeHex . either error id . fromMnemonic . B8.unpack
 
 hx_bip39_seed :: Hex s => {-passphrase-}BS -> {-mnemonic-}BS -> s
-hx_bip39_seed pf = encodeHex . either error id . mnemonicToSeed (B8.unpack pf) . B8.unpack
+hx_bip39_seed pf = encodeHex . either error id . mnemonicToSeed (B8.unpack pf) . f . B8.unpack
+  where f s | isHex s   = either (const s) id (toMnemonic (decodeHex "seed" s))
+            | otherwise = s
 
 hx_btc, hx_satoshi :: BS -> BS
 hx_btc     = B8.pack . formatScientific Fixed (Just 8) . (/ one_btc_in_satoshi) . readBS
