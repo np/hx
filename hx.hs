@@ -16,6 +16,13 @@ import qualified Data.ByteString.Lazy as LBS
 import Crypto.MAC.HMAC (hmac)
 import qualified Crypto.Hash.SHA224 as SHA224 (hash)
 import qualified Crypto.Hash.SHA384 as SHA384 (hash)
+import Crypto.PBKDF (sha1PBKDF1
+                    ,sha256PBKDF1
+                    ,sha512PBKDF1
+                    ,sha1PBKDF2
+                    ,sha256PBKDF2
+                    ,sha512PBKDF2
+                    )
 
 import Network.Haskoin.Crypto
 import Network.Haskoin.Internals ( curveP, curveN, curveG, integerA, integerB
@@ -445,7 +452,26 @@ hx_showtx _ = error "Usage: hx showtx [-j|--json] [<TXFILE>]"
 
 hx_hmac :: String -> (BS -> BS) -> Int -> [BS] -> BS
 hx_hmac _ h s [key,input] = encodeHex $ hmac h s (decodeHex "hmac key" key) (decodeHex "hmac data" input)
-hx_hmac m _ _ _           = error $ "hx hmac-" ++ m ++ " <KEY> [<INPUT>]"
+hx_hmac m _ _ _           = error $ "hx hmac-" ++ m ++ " <HEX-KEY> [<HEX-INPUT>]"
+
+hx_PBKDF1 :: (String -> String -> Int -> String) -> BS -> [BS] -> IO ()
+hx_PBKDF1 f m = interactArgsLn go
+  where
+    usage = "hx " ++ B8.unpack m ++ " [--hex] <PASSWORD> [--hex] <SALT> <COUNT>"
+    go args0 = let (password,args1) = get_hex_arg "password" usage args0
+                   (salt,args2)     = get_hex_arg "salt"     usage args1
+                   (count,args3)    = get_int_arg "count"    usage args2
+               in no_args usage args3 . B8.pack $ f (B8.unpack password) (B8.unpack salt) count
+
+hx_PBKDF2 :: (String -> String -> Int -> Int -> String) -> BS -> [BS] -> IO ()
+hx_PBKDF2 f m = interactArgsLn go
+  where
+    usage = "hx " ++ B8.unpack m ++ " [--hex] <PASSWORD> [--hex] <SALT> <COUNT> <LENGTH>"
+    go args0 = let (password,args1) = get_hex_arg "password" usage args0
+                   (salt,args2)     = get_hex_arg "salt"     usage args1
+                   (count,args3)    = get_int_arg "count"    usage args2
+                   (len,args4)      = get_int_arg "length"   usage args3
+               in no_args usage args4 . B8.pack $ f (B8.unpack password) (B8.unpack salt) count len
 
 chksum32_encode :: BS -> BS
 chksum32_encode d = d <> encode' (chksum32 d)
@@ -561,6 +587,12 @@ mainArgs ("hmac-sha224":args)        = interactArgsLn (hx_hmac "sha224" SHA224.h
 mainArgs ("hmac-sha256":args)        = interactArgsLn (hx_hmac "sha256" hash256BS   64)  args
 mainArgs ("hmac-sha384":args)        = interactArgsLn (hx_hmac "sha384" SHA384.hash 128) args
 mainArgs ("hmac-sha512":args)        = interactArgsLn (hx_hmac "sha512" hash512BS   128) args
+mainArgs (arg@"sha1pbkdf1":args)     = hx_PBKDF1 sha1PBKDF1   arg args
+mainArgs (arg@"sha256pbkdf1":args)   = hx_PBKDF1 sha256PBKDF1 arg args
+mainArgs (arg@"sha512pbkdf1":args)   = hx_PBKDF1 sha512PBKDF1 arg args
+mainArgs (arg@"sha1pbkdf2":args)     = hx_PBKDF2 sha1PBKDF2   arg args
+mainArgs (arg@"sha256pbkdf2":args)   = hx_PBKDF2 sha256PBKDF2 arg args
+mainArgs (arg@"sha512pbkdf2":args)   = hx_PBKDF2 sha512PBKDF2 arg args
 
 mainArgs ("chksum32":args)           = interactArgs hx_chksum32        args
 mainArgs ("chksum32-encode":args)    = interactArgs hx_chksum32_encode args
@@ -707,10 +739,19 @@ mainArgs _ = error $ unlines ["Unexpected arguments."
                              ,"hx hash256                                [0]"
                              ,""
                              ,"# HASH BASED MACs"
-                             ,"hx hmac-sha224 <KEY> [<HEX-INPUT>]        [0]"
-                             ,"hx hmac-sha256 <KEY> [<HEX-INPUT>]        [0]"
-                             ,"hx hmac-sha384 <KEY> [<HEX-INPUT>]        [0]"
-                             ,"hx hmac-sha512 <KEY> [<HEX-INPUT>]        [0]"
+                             -- TODO the second argument is not optional yet
+                             ,"hx hmac-sha224 <HEX-KEY> [<HEX-INPUT>]        [0]"
+                             ,"hx hmac-sha256 <HEX-KEY> [<HEX-INPUT>]        [0]"
+                             ,"hx hmac-sha384 <HEX-KEY> [<HEX-INPUT>]        [0]"
+                             ,"hx hmac-sha512 <HEX-KEY> [<HEX-INPUT>]        [0]"
+                             ,""
+                             ,"# PASSWORD BASED KEY DERIVATION FUNCTIONS"
+                             ,"hx sha1pbkdf1   [--hex] <PASSWORD> [--hex] <SALT> <COUNT>          [0]"
+                             ,"hx sha256pbkdf1 [--hex] <PASSWORD> [--hex] <SALT> <COUNT>          [0]"
+                             ,"hx sha512pbkdf1 [--hex] <PASSWORD> [--hex] <SALT> <COUNT>          [0]"
+                             ,"hx sha1pbkdf2   [--hex] <PASSWORD> [--hex] <SALT> <COUNT> <LENGTH> [0]"
+                             ,"hx sha256pbkdf2 [--hex] <PASSWORD> [--hex] <SALT> <COUNT> <LENGTH> [0]"
+                             ,"hx sha512pbkdf2 [--hex] <PASSWORD> [--hex] <SALT> <COUNT> <LENGTH> [0]"
                              ,""
                              ,"[0]: Not available in sx"
                              ,"[1]: `hx showtx` is always using JSON output,"

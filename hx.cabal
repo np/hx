@@ -17,7 +17,7 @@ executable hx
   ghc-options:         -Wall
   build-depends:       base >=4.6, haskoin, bytestring, base16-bytestring,
                        scientific, binary, RFC1751 >= 0.3, containers,
-                       aeson, cryptohash,
+                       aeson, cryptohash, pbkdf,
                        -- required by aeson
                        attoparsec, hashable, unordered-containers, text,
                        -- required by haskoin
