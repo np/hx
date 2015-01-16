@@ -1,6 +1,6 @@
 #!/bin/bash
 
-testname=hd-path-m-0-2147483647\'-from-seed-test-vector.t
+testname=hd-path-m-0-2147483647\'-from-seed-test-vector2.t
 command=hx
 args=( hd-path m/0/2147483647\' )
 exit_code=0

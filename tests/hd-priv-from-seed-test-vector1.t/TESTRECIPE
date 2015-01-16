@@ -1,6 +1,6 @@
 #!/bin/bash
 
-testname=hd-priv-from-seed-test-vector.t
+testname=hd-priv-from-seed-test-vector1.t
 command=hx
 args=( hd-priv )
 exit_code=0
