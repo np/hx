@@ -529,6 +529,7 @@ mainArgs ["hd-to-address"]           = interactLn hx_hd_to_address
 
 mainArgs ["bip39-mnemonic"]          = interactLn hx_bip39_mnemonic
 mainArgs ["bip39-hex"]               = interactLn hx_bip39_hex
+mainArgs ["bip39-seed"]              = interactLn $ hx_bip39_seed ""
 mainArgs ["bip39-seed", pass]        = interactLn $ hx_bip39_seed pass
 
 mainArgs ["rfc1751-key"]             = interactLn hx_rfc1751_key
