@@ -6,6 +6,8 @@ Bitcoin CLI tools: Haskell port of [Sx](https://github.com/spesmilo/sx) using [H
 List of supported commands:
 
     # ADDRESSES
+
+[![Join the chat at https://gitter.im/np/hx](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/np/hx?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
     hx addr
     hx validaddr [<ADDRESS>]
     hx decode-addr
