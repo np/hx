@@ -6,11 +6,12 @@ import Data.Aeson.Types (Pair)
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Text as T
 
-import Network.Haskoin.Crypto (txHash,pubKeyAddr,addrToBase58,derivePubKey,toWIF)
+import Network.Haskoin.Crypto (pubKeyAddr,addrToBase58,derivePubKey,toWif)
+import Network.Haskoin.Transaction (txHash)
 import Network.Haskoin.Internals (Tx(..), TxIn(..), TxOut(..)
                                  ,scriptSender, scriptRecipient
                                  ,XPrvKey(..),XPubKey(..)
-                                 ,xPrvIsPrime,xPrvChild,xPubIsPrime,xPubChild
+                                 ,xPrvIsHard,xPrvChild,xPubIsHard,xPubChild
                                  )
 import Network.Haskoin.Util (eitherToMaybe,decode')
 import Utils (putHex)
@@ -62,10 +63,10 @@ instance ToJSON DetailedXPrvKey where
       ,"depth"   .=  xPrvDepth k
       ,"parent"  .=  xPrvParent k
       ,"index"   .=  object ["value" .= xPrvIndex k
-                            ,(if xPrvIsPrime k then "hard" else "soft") .= xPrvChild k
+                            ,(if xPrvIsHard k then "hard" else "soft") .= xPrvChild k
                             ]
       ,"chain"   .=  xPrvChain k
-      ,"prvkey"  .=  toWIF (xPrvKey k)
+      ,"prvkey"  .=  toWif (xPrvKey k)
       ,"pubkey"  .=$ putHex pub
       ,"address" .=  addrToBase58 addr
       ]
@@ -79,7 +80,7 @@ instance ToJSON DetailedXPubKey where
       ,"depth"   .=  xPubDepth k
       ,"parent"  .=  xPubParent k
       ,"index"   .=  object ["value" .= xPubIndex k
-                            ,(if xPubIsPrime k then "hard" else "soft") .= xPubChild k
+                            ,(if xPubIsHard k then "hard" else "soft") .= xPubChild k
                             ]
       ,"chain"   .=  xPubChain k
       ,"pubkey"  .=$ putHex pub

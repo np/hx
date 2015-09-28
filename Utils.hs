@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings, TypeSynonymInstances, FlexibleInstances #-}
 module Utils where
 
-import Control.Applicative
 import Data.Binary
 import Data.Char (isSpace,isDigit,toLower,isHexDigit)
 import Data.Maybe
@@ -12,7 +11,7 @@ import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Base16 as B16
 import Network.Haskoin.Crypto
-import Network.Haskoin.Internals (FieldP, FieldN, getBigWordInteger, Point, curveN, curveP)
+import Network.Haskoin.Internals (getBigWordInteger, Point, pubKeyPoint, curveN, curveP)
 import Network.Haskoin.Util
 
 subst :: Eq a => (a,a) -> a -> a
@@ -78,7 +77,7 @@ get_int_arg n u (arg:args)
   | otherwise              = error . unwords $ ["Non-decimal digits for", n ++ ".\nUsage:", u]
 
 no_args :: String -> [BS] -> a -> a
-no_args u [] x = x
+no_args _ [] x = x
 no_args u _  _ = error $ "Too many arguments.\nUsage: " ++ u
 
 parseInt    :: String -> BS -> Int
@@ -168,10 +167,10 @@ getHexLE :: (Binary a, Hex s) => String -> s -> a
 getHexLE msg = decode' . BS.reverse . decodeHex (msg ++ " (little endian)")
 
 getPoint :: Hex s => s -> Point
-getPoint = pubKeyPoint . getHex "curve point"
+getPoint s = pubKeyPoint (getHex "curve point" s :: PubKey)
 
 putPoint :: Hex s => Point -> s
-putPoint = putHex . PubKey
+putPoint = putHex . makePubKey
 
 interactArgs' :: (IsString s, Eq s) => (s -> IO ()) -> IO s -> ([s] -> s) -> [s] -> IO ()
 interactArgs' puts gets f [] = puts . f . return =<< gets
@@ -224,5 +223,5 @@ makePrvKey256 s
 
 makePrvKeyU256 :: BS -> PrvKey
 makePrvKeyU256 s
-  | BS.length s == 32 = fromMaybe (error "makePrvKeyU256: invalid key") . makePrvKeyU $ bsToInteger s
+  | BS.length s == 32 = toPrvKeyG . fromMaybe (error "makePrvKeyU256: invalid key") . makePrvKeyU $ bsToInteger s
   | otherwise         = error $ "makePrvKeyU256: invalid size for input key, should be 256 bits and not " ++ show (BS.length s * 8) ++ " bits"

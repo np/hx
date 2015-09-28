@@ -1,5 +1,5 @@
 name:                hx
-version:             0.1.0.0
+version:             0.1.1.0
 synopsis:            Bitcoin CLI tools: Haskell port of Sx using Haskoin
 homepage:            https://github.com/np/hx
 license:             GPL-3
@@ -14,8 +14,14 @@ cabal-version:       >=1.10
 
 executable hx
   main-is:             hx.hs
+  other-modules:       DetailedTx
+                       Electrum
+                       Mnemonic
+                       ParseScript
+                       PrettyScript
+                       Utils
   ghc-options:         -Wall
-  build-depends:       base >=4.6, haskoin, bytestring, base16-bytestring,
+  build-depends:       base >=4.8, haskoin, bytestring, base16-bytestring,
                        scientific, binary, RFC1751 >= 0.3, containers,
                        aeson, cryptohash, pbkdf,
                        -- required by aeson
@@ -23,5 +29,4 @@ executable hx
                        -- required by haskoin
                        either
   default-language:    Haskell2010
-  -- other-modules:       
   -- other-extensions:    

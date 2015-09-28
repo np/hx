@@ -6,7 +6,6 @@ import Data.Word
 import Data.Monoid
 import Data.Scientific
 import Data.String
-import Data.Functor ((<$>))
 import Data.Char (isDigit,toLower)
 import qualified Data.RFC1751 as RFC1751
 import System.Environment
@@ -24,10 +23,10 @@ import Crypto.PBKDF (sha1PBKDF1
                     ,sha512PBKDF2
                     )
 
-import Network.Haskoin.Crypto
+import Network.Haskoin.Crypto hiding (derivePubPath, derivePath)
 import Network.Haskoin.Internals ( curveP, curveN, curveG, integerA, integerB
                                  , getX, getY, addPoint, doublePoint, mulPoint
-                                 , makeInfPoint
+                                 , makeInfPoint, pubKeyPoint
                                  , OutPoint(OutPoint), Tx(..), Script
                                  , SigHash(SigAll), TxSignature(TxSignature)
                                  , TxIn(..)
@@ -56,18 +55,12 @@ class Compress a where
   uncompress :: a -> a
 
 instance Compress PrvKey where
-  compress (PrvKeyU k)  = PrvKey k
-  compress k@PrvKey{} = k
-
-  uncompress (PrvKey k)  = PrvKeyU k
-  uncompress k@PrvKeyU{} = k
+  compress = toPrvKeyG . fromJust . makePrvKeyC . fromPrvKey
+  uncompress = toPrvKeyG . fromJust . makePrvKeyU . fromPrvKey
 
 instance Compress PubKey where
-  compress (PubKeyU k)  = PubKey k
-  compress k@PubKey{} = k
-
-  uncompress (PubKey k)  = PubKeyU k
-  uncompress k@PubKeyU{} = k
+  compress = toPubKeyG . makePubKeyC . pubKeyPoint
+  uncompress = toPubKeyG . makePubKeyU . pubKeyPoint
 
 instance Compress Key where
   compress = mapKey compress compress
@@ -78,7 +71,7 @@ decodeBase58E = fromMaybe (error "invalid base58 encoding") . decodeBase58 . ign
 
 xPrvImportBS :: BS -> Maybe XPrvKey
 xPrvImportBS s | "xprv" `BS.isPrefixOf` s = xPrvImport (B8.unpack s)
-               | otherwise                = makeXPrvKey (decodeHex "seed" s)
+               | otherwise                = Just $ makeXPrvKey (decodeHex "seed" s)
 
 xPubImportBS :: BS -> Maybe XPubKey
 xPubImportBS = xPubImport . B8.unpack
@@ -117,17 +110,16 @@ pubXKey (XPub k) = k
 pubXKey (XPrv k) = deriveXPubKey k
 
 xMasterImportE :: Hex s => s -> XPrvKey
-xMasterImportE = fromMaybe (error "failed to derived private root key from seed")
-               . makeXPrvKey . decodeHex "seed"
+xMasterImportE = makeXPrvKey . decodeHex "seed"
 
 xKeyExportC :: Char -> XKey -> BS
 xKeyExportC 'A' = addrToBase58BS . xPubAddr . pubXKey
 xKeyExportC 'P' = putHex . xPubKey . pubXKey
-xKeyExportC 'U' = putHex . uncompress . xPubKey . pubXKey
+xKeyExportC 'U' = putHex . uncompress . toPubKeyG . xPubKey . pubXKey
 xKeyExportC 'M' = xPubExportBS . pubXKey
-xKeyExportC 'p' = onXKey (B8.pack . xPrvWIF)
+xKeyExportC 'p' = onXKey (B8.pack . xPrvWif)
                          (error "Private keys can not be derived from extended public keys (expected P/, U/ or M/ not p/)")
-xKeyExportC 'u' = onXKey (toWIFBS . uncompress . xPrvKey)
+xKeyExportC 'u' = onXKey (toWIFBS . uncompress . toPrvKeyG . xPrvKey)
                          (error "Uncompressed private keys can not be derived from extended public keys (expected P/, U/ or M/ not u/)")
 xKeyExportC 'm' = onXKey xPrvExportBS
                          (error "Extended private keys can not be derived from extended public keys (expected M/ not m/)")
@@ -164,22 +156,22 @@ derivePath :: String -> XKey -> XKey
 derivePath p = mapXKey (derivePrvPath p) (derivePubPath p)
 
 fromWIFE :: BS -> PrvKey
-fromWIFE = fromMaybe (error "invalid WIF private key") . fromWIF . B8.unpack . ignoreSpaces
+fromWIFE = fromMaybe (error "invalid WIF private key") . fromWif . B8.unpack . ignoreSpaces
 
 toWIFBS :: PrvKey -> BS
-toWIFBS = B8.pack . toWIF
+toWIFBS = B8.pack . toWif
 
 base58ToAddrE :: BS -> Address
 base58ToAddrE = fromMaybe (error "invalid bitcoin address") . base58ToAddr . B8.unpack . ignoreSpaces
 
 prvSubKeyE :: XPrvKey -> Word32 -> XPrvKey
-prvSubKeyE k = fromMaybe (error "failed to derive private sub key") . prvSubKey k
+prvSubKeyE k = prvSubKey k
 
 primeSubKeyE :: XPrvKey -> Word32 -> XPrvKey
-primeSubKeyE k = fromMaybe (error "failed to derive private prime sub key") . primeSubKey k
+primeSubKeyE k = hardSubKey k
 
 pubSubKeyE :: XPubKey -> Word32 -> XPubKey
-pubSubKeyE k = fromMaybe (error "failed to derive public sub key") . pubSubKey k
+pubSubKeyE k = pubSubKey k
 
 splitOnBS :: Char -> BS -> (BS,BS)
 splitOnBS c s =
@@ -268,7 +260,7 @@ hx_addr :: BS -> BS
 hx_addr = keyAddrBase58 . getKey
 
 hx_wif_to_secret :: Hex s => BS -> s
-hx_wif_to_secret = encodeHex . runPut' . putPrvKey . fromWIFE
+hx_wif_to_secret = encodeHex . runPut' . prvKeyPutMonad . fromWIFE
 
 hx_secret_to_wif :: BS -> BS
 hx_secret_to_wif = toWIFBS . fromMaybe (error "invalid private key")
@@ -276,7 +268,7 @@ hx_secret_to_wif = toWIFBS . fromMaybe (error "invalid private key")
                  . decodeHex "private key"
 
 hx_hd_to_wif :: BS -> BS
-hx_hd_to_wif = B8.pack . xPrvWIF . xPrvImportE
+hx_hd_to_wif = B8.pack . xPrvWif . xPrvImportE
 
 hx_hd_to_address :: BS -> BS
 hx_hd_to_address = addrToBase58BS . xPubAddr . pubXKey . xKeyImportE

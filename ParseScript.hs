@@ -9,7 +9,6 @@ import Data.ByteString.Char8 (ByteString,pack)
 import Data.Word (Word8)
 import qualified Data.ByteString.Base16 as B16
 import Text.ParserCombinators.ReadP hiding (many)
-import Data.Functor
 import Control.Applicative
 
 type Parser a = ReadP a

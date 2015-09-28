@@ -1,13 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Electrum where
 
+import Data.Maybe
 import Data.Word
 import Data.Monoid
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
 
 import Network.Haskoin.Crypto
-import Network.Haskoin.Internals (FieldN, Point, curveG, addPoint, mulPoint)
+import Network.Haskoin.Internals (Point, curveG, addPoint, mulPoint, pubKeyPoint)
 import Network.Haskoin.Util
 import Utils
 
@@ -29,10 +30,11 @@ sequenceN :: Word32 -> Bool -> El_mpk -> FieldN
 sequenceN n c = runGet' getFieldN . sequenceBS n c
 
 point_mpk :: El_mpk -> Point
-point_mpk = pubKeyPoint . decode' . BS.cons 0x04 . mpk_bytes
+point_mpk mpk = pubKeyPoint (decode' . BS.cons 0x04 $ mpk_bytes mpk :: PubKey)
 
 mpk_from_secret :: FieldN -> El_mpk
-mpk_from_secret = El_mpk . BS.drop 1 . encode' . derivePubKey . PrvKeyU
+mpk_from_secret =
+    El_mpk . BS.drop 1 . encode' . derivePubKey . fromJust . makePrvKeyU . fromIntegral
 
 derived_mpk :: El_seed -> El_mpk
 derived_mpk = mpk_from_secret . stretched_seedN
@@ -52,14 +54,14 @@ decode_mpk s0
   where s = ignoreSpaces s0
 
 derive_priv :: Word32 -> Bool -> El_seed -> PrvKey
-derive_priv n for_change seed = PrvKeyU sk
+derive_priv n for_change seed = toPrvKeyG . fromJust . makePrvKeyU $ fromIntegral sk
   where secexp = stretched_seedN seed
         mpk    = mpk_from_secret secexp
         z      = sequenceN n for_change mpk
         sk     = secexp + z
 
 derive_pub :: Word32 -> Bool -> El_mpk -> PubKey
-derive_pub n for_change mpk = PubKeyU pk
+derive_pub n for_change mpk = toPubKeyG $ makePubKeyU pk
   where z   = sequenceN n for_change mpk
         zG  = mulPoint z curveG
         pk  = addPoint (point_mpk mpk) zG
@@ -73,7 +75,7 @@ hx_electrum_stretch_seed
 
 hx_electrum_priv :: [BS] -> BS -> BS
 hx_electrum_priv = hx_electrum_args "electrum-priv" decode_seed $ \n c s ->
-                     B8.pack . toWIF $ derive_priv n c s
+                     B8.pack . toWif $ derive_priv n c s
 
 hx_electrum_sequence :: [BS] -> BS -> BS
 hx_electrum_sequence = hx_electrum_args "electrum-sequence" decode_mpk $ \n c s ->
