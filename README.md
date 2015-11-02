@@ -5,7 +5,17 @@ Bitcoin CLI tools: Haskell port of [Sx](https://github.com/spesmilo/sx) using [H
 
 [![Join the chat at https://gitter.im/np/hx](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/np/hx?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-List of supported commands:
+Building with [Stack](https://github.com/commercialhaskell/stack)
+-----------------------------------------------------------------
+
+    $ git clone https://github.com/np/hx
+    $ cd hx
+    $ stack setup
+    $ stack build
+    $ stack exec hx --help
+
+List of supported commands
+--------------------------
 
     # ADDRESSES
 
