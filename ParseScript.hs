@@ -3,11 +3,12 @@ module ParseScript
   ,parseScript
   ,parseReadP) where
 
-import Network.Haskoin.Internals (Script(..),ScriptOp(..),opPushData)
+import Haskoin (Script(..),ScriptOp(..),opPushData)
 import Data.Char (isHexDigit,isDigit,toUpper,isAlphaNum)
-import Data.ByteString.Char8 (ByteString,pack)
+import Data.ByteString (ByteString)
 import Data.Word (Word8)
-import qualified Data.ByteString.Base16 as B16
+import qualified Data.Text as T
+import qualified Haskoin as H
 import Text.ParserCombinators.ReadP hiding (many)
 import Control.Applicative
 
@@ -36,7 +37,9 @@ hexDigit :: Parser Char
 hexDigit = satisfy isHexDigit
 
 hex :: Parser ByteString
-hex = fst . B16.decode . pack <$> some hexDigit <* skipSpaces
+hex = do
+  ds <- some hexDigit <* skipSpaces
+  maybe pfail return (H.decodeHex (T.pack ds))
 
 word8 :: Parser Word8
 word8 = read <$> some (satisfy isDigit) <* skipSpaces
@@ -44,6 +47,9 @@ word8 = read <$> some (satisfy isDigit) <* skipSpaces
 op :: String -> Parser ()
 op s = tokP (foldr1 (<|>) . map string $ [s, up s, "op_" ++ s, "OP_" ++ up s])
   where up = map toUpper
+
+ops :: [String] -> Parser ()
+ops = foldr1 (<|>) . map op
 
 parseOp :: Parser ScriptOp
 parseOp
@@ -169,8 +175,8 @@ parseOp
 
  -- More NOPs
  <|> OP_NOP1               <$ op "nop1"
- <|> OP_NOP2               <$ op "nop2"
- <|> OP_NOP3               <$ op "nop3"
+ <|> OP_CHECKLOCKTIMEVERIFY <$ ops ["checklocktimeverify", "cltv", "nop2"]
+ <|> OP_CHECKSEQUENCEVERIFY <$ ops ["checksequenceverify", "csv", "nop3"]
  <|> OP_NOP4               <$ op "nop4"
  <|> OP_NOP5               <$ op "nop5"
  <|> OP_NOP6               <$ op "nop6"
@@ -178,6 +184,11 @@ parseOp
  <|> OP_NOP8               <$ op "nop8"
  <|> OP_NOP9               <$ op "nop9"
  <|> OP_NOP10              <$ op "nop10"
+
+ -- Opcode 0xba: OP_CHECKSIGADD in Tapscript (BTC), OP_CHECKDATASIG on BCH
+ <|> OP_CHECKDATASIGVERIFY <$ op "checkdatasigverify"
+ <|> OP_CHECKDATASIG       <$ ops ["checkdatasig", "checksigadd"]
+ <|> OP_REVERSEBYTES       <$ op "reversebytes"
 
 parseScript :: Parser Script
 parseScript = Script <$> many parseOp

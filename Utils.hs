@@ -1,227 +1,271 @@
-{-# LANGUAGE OverloadedStrings, TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Utils where
 
-import Data.Binary
-import Data.Char (isSpace,isDigit,toLower,isHexDigit)
-import Data.Maybe
-import Data.Monoid
-import Data.String
+import Control.Exception (evaluate)
+import Crypto.Hash (Digest, HashAlgorithm, hashWith)
+import Crypto.Hash.Algorithms (RIPEMD160 (..), SHA1 (..), SHA224 (..), SHA256 (..), SHA384 (..), SHA512 (..))
+import qualified Data.ByteArray as BA
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Char8 as B8
-import qualified Data.ByteString.Base16 as B16
-import Network.Haskoin.Crypto
-import Network.Haskoin.Internals (getBigWordInteger, Point, pubKeyPoint, curveN, curveP)
-import Network.Haskoin.Util
-
-subst :: Eq a => (a,a) -> a -> a
-subst (x,y) z | x == z    = y
-              | otherwise = z
+import Data.Bytes.Get (runGetS)
+import Data.Bytes.Put (runPutS)
+import Data.Bytes.Serial (Serial (..))
+import Data.Char (isDigit, isHexDigit, isSpace, toLower)
+import Data.String (IsString)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import Data.Word (Word32, Word64, Word8)
+import qualified Haskoin.Util as H
 
 type BS = BS.ByteString
 
-class Hex s where
-  -- | Decode a base16 (HEX) representation to a bytestring
-  decodeHex :: String -> s -> BS
+subst :: (Eq a) => (a, a) -> a -> a
+subst (x, y) z
+  | x == z = y
+  | otherwise = z
 
-  -- | Encode a bytestring to a base16 (HEX) representation
-  encodeHex :: BS -> s
+-- * Hexadecimal
 
-instance Hex String where
-  decodeHex msg = decodeHex msg . B8.pack
-  encodeHex     = B8.unpack . encodeHex
+-- | Decode hexadecimal, ignoring white space. The first argument names the
+-- decoded value in the error message.
+decodeHex :: String -> BS -> BS
+decodeHex msg s =
+  case H.decodeHex (TE.decodeLatin1 (ignoreSpaces s)) of
+    Just r -> r
+    Nothing -> error $ msg ++ ": invalid hex encoding"
 
-instance Hex BS where
-  encodeHex    = B16.encode
-  decodeHex msg s
-    | BS.null rest = s'
-    | otherwise    = error $ msg ++ ": invalid hex encoding"
-    where (s',rest) = B16.decode (ignoreSpaces s)
-
-instance Hex LBS.ByteString where
-  decodeHex msg = decodeHex msg . toStrictBS
-  encodeHex     = toLazyBS . encodeHex
+encodeHex :: BS -> BS
+encodeHex = TE.encodeUtf8 . H.encodeHex
 
 isHex :: String -> Bool
-isHex = all (\ c -> isHexDigit c || isSpace c)
+isHex = all (\c -> isHexDigit c || isSpace c)
 
-putLn :: (IsString s, Monoid s) => s -> s
+-- | Decode hexadecimal of a fixed number of bytes.
+decodeHexBytes :: String -> Int -> BS -> BS
+decodeHexBytes msg b s
+  | l == b = x
+  | otherwise =
+      error . unwords $
+        [ "invalid",
+          msg,
+          "(should be",
+          show (8 * b),
+          "bits and not",
+          show (8 * l),
+          "bits)"
+        ]
+  where
+    x = decodeHex msg s
+    l = BS.length x
+
+-- * Binary serialization
+
+encodeS :: (Serial a) => a -> BS
+encodeS = runPutS . serialize
+
+decodeS :: (Serial a) => String -> BS -> a
+decodeS msg = either (\e -> error $ "invalid " ++ msg ++ ": " ++ e) id . runGetS deserialize
+
+putHex :: (Serial a) => a -> BS
+putHex = encodeHex . encodeS
+
+getHex :: (Serial a) => String -> BS -> a
+getHex msg = decodeS msg . decodeHex msg
+
+-- | Little endian version of getHex (for transaction hashes as displayed).
+getHexLE :: (Serial a) => String -> BS -> a
+getHexLE msg = decodeS msg . BS.reverse . decodeHex (msg ++ " (little endian)")
+
+-- * Text
+
+toText :: BS -> T.Text
+toText = TE.decodeUtf8
+
+fromText :: T.Text -> BS
+fromText = TE.encodeUtf8
+
+putLn :: (IsString s, Semigroup s) => s -> s
 putLn = (<> "\n")
 
-showB8 :: Show a => a -> BS
+showB8 :: (Show a) => a -> BS
 showB8 = B8.pack . show
-
-strictReadDigits :: Read a => String -> BS -> a
-strictReadDigits msg s
-  | B8.all isDigit s = read (B8.unpack s)
-  | otherwise        = error $ "Invalid number containing non digits (while reading " <> msg <> ")"
-
--- Same as strictReadDigits but ignore spaces in the input
-readDigits :: Read a => String -> BS -> a
-readDigits  msg = strictReadDigits msg . ignoreSpaces
-
-get_arg :: String -> String -> [BS] -> (BS, [BS])
-get_arg n u []         = error . unwords $ ["Missing", n ++ ".\nhx", n, u]
-get_arg _ _ (arg:args) = (arg, args)
-
-get_hex_arg :: String -> String -> [BS] -> (BS, [BS])
-get_hex_arg n u []                     = error . unwords $ ["Missing", n ++ ".\nUsage:", u]
-get_hex_arg n u ["--hex"]              = error . unwords $ ["Missing", n ++ "in hexadecimal.\nUsage:", u]
-get_hex_arg n _ ("--hex":hex_arg:args) = (decodeHex n hex_arg, args)
-get_hex_arg _ _ (arg:args)             = (arg, args)
-
-get_int_arg :: String -> String -> [BS] -> (Int, [BS])
-get_int_arg n u []         = error . unwords $ ["Missing", n ++ ".\nUsage:", u]
-get_int_arg n u (arg:args)
-  | B8.all isDigit arg     = (readBS arg, args)
-  | otherwise              = error . unwords $ ["Non-decimal digits for", n ++ ".\nUsage:", u]
-
-no_args :: String -> [BS] -> a -> a
-no_args _ [] x = x
-no_args u _  _ = error $ "Too many arguments.\nUsage: " ++ u
-
-parseInt    :: String -> BS -> Int
-parseWord8  :: String -> BS -> Word8
-parseWord32 :: String -> BS -> Word32
-parseWord64 :: String -> BS -> Word64
-
-parseInt    = readDigits
-parseWord8  = readDigits
-parseWord32 = readDigits
-parseWord64 = readDigits
-
-readBS :: Read a => BS -> a
-readBS = read . B8.unpack
-
-show01 :: IsString s => Bool -> s
-show01 True  = "1"
-show01 False = "0"
-
-read01 :: BS -> Bool
-read01 s
-  | B8.map toLower s `elem` ["0","false","no"] = False
-  | B8.map toLower s `elem` ["1","true","yes"] = True
-  | otherwise = error $ "Expect 0, false, no, 1, true, or yes, not " ++ show s
 
 ignoreSpaces :: BS -> BS
 ignoreSpaces = B8.filter $ not . isSpace
 
+trim :: BS -> BS
+trim = B8.dropWhile isSpace . B8.dropWhileEnd isSpace
+
+-- * Numbers
+
+strictReadDigits :: (Read a) => String -> BS -> a
+strictReadDigits msg s
+  | not (BS.null s) && B8.all isDigit s = read (B8.unpack s)
+  | otherwise = error $ "Invalid number containing non digits (while reading " <> msg <> ")"
+
+-- | Same as strictReadDigits but ignore spaces in the input
+readDigits :: (Read a) => String -> BS -> a
+readDigits msg = strictReadDigits msg . ignoreSpaces
+
+-- | Read a non-negative number and check it fits in the target type.
+readBounded :: forall a. (Integral a, Bounded a) => String -> BS -> a
+readBounded msg s
+  | i <= toInteger (maxBound :: a) = fromInteger i
+  | otherwise = error $ "Number too large (while reading " <> msg <> ")"
+  where
+    i = readDigits msg s :: Integer
+
+parseInt :: String -> BS -> Int
+parseInt = readBounded
+
+parseWord8 :: String -> BS -> Word8
+parseWord8 = readBounded
+
+parseWord32 :: String -> BS -> Word32
+parseWord32 = readBounded
+
+parseWord64 :: String -> BS -> Word64
+parseWord64 = readBounded
+
+readBS :: (Read a) => BS -> a
+readBS = read . B8.unpack
+
+show01 :: (IsString s) => Bool -> s
+show01 True = "1"
+show01 False = "0"
+
+read01 :: BS -> Bool
+read01 s
+  | B8.map toLower s `elem` ["0", "false", "no"] = False
+  | B8.map toLower s `elem` ["1", "true", "yes"] = True
+  | otherwise = error $ "Expect 0, false, no, 1, true, or yes, not " ++ show s
+
+-- * Argument handling
+
+get_arg :: String -> String -> [BS] -> (BS, [BS])
+get_arg n u [] = error . unwords $ ["Missing", n ++ ".\nUsage:", u]
+get_arg _ _ (arg : args) = (arg, args)
+
+get_hex_arg :: String -> String -> [BS] -> (BS, [BS])
+get_hex_arg n u [] = error . unwords $ ["Missing", n ++ ".\nUsage:", u]
+get_hex_arg n u ["--hex"] = error . unwords $ ["Missing", n ++ " in hexadecimal.\nUsage:", u]
+get_hex_arg n _ ("--hex" : hex_arg : args) = (decodeHex n hex_arg, args)
+get_hex_arg _ _ (arg : args) = (arg, args)
+
+get_int_arg :: String -> String -> [BS] -> (Int, [BS])
+get_int_arg n u [] = error . unwords $ ["Missing", n ++ ".\nUsage:", u]
+get_int_arg n u (arg : args)
+  | not (BS.null arg) && B8.all isDigit arg = (readBS arg, args)
+  | otherwise = error . unwords $ ["Non-decimal digits for", n ++ ".\nUsage:", u]
+
+no_args :: String -> [BS] -> a -> a
+no_args _ [] x = x
+no_args u _ _ = error $ "Too many arguments.\nUsage: " ++ u
+
+-- | Extract @--flag VALUE@ options (in any position) from an argument list.
+-- Returns the values of the given option and the remaining arguments.
+takeOpt :: [BS] -> [BS] -> ([BS], [BS])
+takeOpt names = go
+  where
+    go (o : v : rest)
+      | o `elem` names = let (vs, r) = go rest in (v : vs, r)
+    go [o]
+      | o `elem` names = error $ "Missing value for option " ++ B8.unpack o
+    go (a : rest) = let (vs, r) = go rest in (vs, a : r)
+    go [] = ([], [])
+
+-- | Like 'takeOpt' for an option given at most once.
+takeOpt1 :: [BS] -> [BS] -> (Maybe BS, [BS])
+takeOpt1 names args = case takeOpt names args of
+  ([], r) -> (Nothing, r)
+  ([v], r) -> (Just v, r)
+  _ -> error $ "Option given more than once: " ++ B8.unpack (B8.unwords names)
+
+-- | Extract boolean @--flag@ switches from an argument list.
+takeFlag :: [BS] -> [BS] -> (Bool, [BS])
+takeFlag names args = (any (`elem` names) args, filter (`notElem` names) args)
+
+-- * Interaction with standard input and output
+
 interactLn :: (BS -> BS) -> IO ()
-interactLn f = BS.interact $ putLn . f
-
-putHex :: (Hex s, Binary a) => a -> s
-putHex = encodeHex . encode'
-
-getHex :: (Hex s, Binary a) => String -> s -> a
-getHex msg = decode' . decodeHex msg
-
-withHex :: (Hex s, Hex s', Monoid s', IsString s') => (BS -> BS) -> s -> s'
-withHex f = putLn . encodeHex . f . decodeHex "input"
-
-integerN :: Integer -> FieldN
-integerN i | i < curveN = fromInteger i
-           | otherwise  = error $ "Integer not in FieldN: " ++ show i
-
-integerP :: Integer -> FieldP
-integerP i | i < curveP = fromInteger i
-           | otherwise  = error $ "Integer not in FieldP: " ++ show i
-
--- Non DER
-getFieldN :: Get FieldN
-getFieldN = integerN . getBigWordInteger <$> (get :: Get Word256)
-
--- Non DER
-putFieldN :: FieldN -> Put
-putFieldN = (put :: Word256 -> Put) . fromIntegral
-
-getHexN :: Hex s => s -> FieldN
-getHexN = runGet' getFieldN . decodeHex "field number modulo N"
-
-putHexN :: Hex s => FieldN -> s
-putHexN = encodeHex . runPut' . putFieldN
-
-getHexP :: Hex s => s -> FieldP
-getHexP = getHex "field number modulo P"
-
-putHexP :: Hex s => FieldP -> s
-putHexP = putHex
-
-getDecModN :: BS -> FieldN
-getDecModN = fromInteger . readDigits "integer modulo n in decimal"
-
-getDecModP :: BS -> FieldP
-getDecModP = fromInteger . readDigits "integer modulo p in decimal"
-
-getDecStrictN :: BS -> FieldN
-getDecStrictN = integerN . readDigits "integer modulo n in decimal"
-
-getDecStrictP :: BS -> FieldP
-getDecStrictP = integerP . readDigits "integer modulo p in decimal"
-
-
-putHex256 :: Hex s => Word256 -> s
-putHex256 = putHex
-
--- Little endian version of getHex
-getHexLE :: (Binary a, Hex s) => String -> s -> a
-getHexLE msg = decode' . BS.reverse . decodeHex (msg ++ " (little endian)")
-
-getPoint :: Hex s => s -> Point
-getPoint s = pubKeyPoint (getHex "curve point" s :: PubKey)
-
-putPoint :: Hex s => Point -> s
-putPoint = putHex . makePubKey
+interactLn f = do
+  s <- BS.getContents
+  r <- evaluate (f s)
+  B8.putStr (putLn r)
 
 interactArgs' :: (IsString s, Eq s) => (s -> IO ()) -> IO s -> ([s] -> s) -> [s] -> IO ()
-interactArgs' puts gets f [] = puts . f . return =<< gets
-interactArgs' puts gets f xs = case length (filter (=="-") xs) of
+interactArgs' puts gets f [] = puts . f . pure =<< gets
+interactArgs' puts gets f xs = case length (filter (== "-") xs) of
   0 -> puts (f xs)
   1 -> gets >>= (\s -> puts . f $ map (subst ("-", s)) xs)
   n -> error $ "Using '-' to read from standard input can be used only once, not " ++ show n ++ " times."
 
+strictPut :: (BS -> IO ()) -> BS -> IO ()
+strictPut out s = evaluate (BS.length s) >> out s
+
 interactArgs :: ([BS] -> BS) -> [BS] -> IO ()
-interactArgs = interactArgs' BS.putStr BS.getContents
+interactArgs = interactArgs' (strictPut BS.putStr) BS.getContents
 
 interactArgsLn :: ([BS] -> BS) -> [BS] -> IO ()
 interactArgsLn = interactArgs . (putLn .)
 
 interactArg :: String -> (BS -> BS) -> [BS] -> IO ()
 interactArg msg f = interactArgs f'
-  where f' [x] = f x
-        f' _   = error $ "Too many arguments.\nUsage: " ++ msg
+  where
+    f' [x] = f x
+    f' _ = error $ "Too many arguments.\nUsage: " ++ msg
 
 interactArgLn :: String -> (BS -> BS) -> [BS] -> IO ()
 interactArgLn msg = interactArg msg . (putLn .)
 
+-- | Read one hexadecimal argument (or standard input) and print the result
+-- of the function in hexadecimal.
 interactHex :: String -> (BS -> BS) -> [BS] -> IO ()
-interactHex msg = interactArg msg . withHex
+interactHex msg f = interactArg msg (withHex f)
+
+withHex :: (BS -> BS) -> BS -> BS
+withHex f = putLn . encodeHex . f . decodeHex "input"
 
 writeArg :: BS -> BS -> IO ()
-writeArg "-" = BS.putStr
-writeArg fp  = BS.writeFile (B8.unpack fp)
+writeArg "-" = strictPut BS.putStr
+writeArg fp = strictPut (BS.writeFile (B8.unpack fp))
 
 interactFileArgs :: ([BS] -> BS) -> BS -> [BS] -> IO ()
 interactFileArgs f file = interactArgs' (writeArg file) BS.getContents f
 
-splitOn :: Char -> String -> (String, String)
-splitOn c xs = (ys, tail zs)
-  where (ys,zs) = span (/= c) xs
+splitOnBS :: Char -> BS -> (BS, BS)
+splitOnBS c s =
+  case B8.span (/= c) s of
+    (s1, s2) -> (s1, BS.drop 1 s2)
 
-decodeHexBytes :: Hex s => String -> Int -> s -> BS
-decodeHexBytes msg b s
-  | l == b    = x
-  | otherwise = error . unwords $ ["invalid", msg, "(should be"
-                                  ,show (8 * b), "bits and not"
-                                  ,show (8 * l), "bits)"]
-  where x = decodeHex msg s
-        l = BS.length x
+-- * Hash functions on raw bytes
 
-makePrvKey256 :: BS -> PrvKey
-makePrvKey256 s
-  | BS.length s == 32 = fromMaybe (error "makePrvKey256: invalid key") . makePrvKey $ bsToInteger s
-  | otherwise         = error $ "makePrvKey256: invalid size for input key, should be 256 bits and not " ++ show (BS.length s * 8) ++ " bits"
+digestBS :: forall a. (HashAlgorithm a) => a -> BS -> BS
+digestBS a bs = BA.convert (hashWith a bs :: Digest a)
 
-makePrvKeyU256 :: BS -> PrvKey
-makePrvKeyU256 s
-  | BS.length s == 32 = toPrvKeyG . fromMaybe (error "makePrvKeyU256: invalid key") . makePrvKeyU $ bsToInteger s
-  | otherwise         = error $ "makePrvKeyU256: invalid size for input key, should be 256 bits and not " ++ show (BS.length s * 8) ++ " bits"
+sha1BS, sha224BS, sha256BS, sha384BS, sha512BS, ripemd160BS :: BS -> BS
+sha1BS = digestBS SHA1
+sha224BS = digestBS SHA224
+sha256BS = digestBS SHA256
+sha384BS = digestBS SHA384
+sha512BS = digestBS SHA512
+ripemd160BS = digestBS RIPEMD160
+
+-- | RIPEMD160 of SHA256
+hash160BS :: BS -> BS
+hash160BS = ripemd160BS . sha256BS
+
+-- | Double SHA256
+hash256BS :: BS -> BS
+hash256BS = sha256BS . sha256BS
+
+-- | First four bytes of the double SHA256
+chksum32BS :: BS -> BS
+chksum32BS = BS.take 4 . hash256BS
+
+-- | BIP 340 tagged hash: SHA256(SHA256(tag) || SHA256(tag) || msg)
+taggedHashBS :: BS -> BS -> BS
+taggedHashBS tag msg = sha256BS (t <> t <> msg)
+  where
+    t = sha256BS tag

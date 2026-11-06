@@ -1,32 +1,48 @@
+cabal-version:       2.4
 name:                hx
-version:             0.1.1.0
-synopsis:            Bitcoin CLI tools: Haskell port of Sx using Haskoin
+version:             0.2.0.0
+synopsis:            Bitcoin and Bitcoin Cash command line tools
+description:
+  A Swiss-army knife for Bitcoin (BTC) and Bitcoin Cash (BCH) built on
+  Haskoin. Originally a Haskell port of Sx. Supports keys, BIP32/39/86
+  wallets, legacy, SegWit, Taproot and CashAddr addresses, scripts,
+  transactions, PSBTs, message signing and assorted hashing and encoding
+  tools.
 homepage:            https://github.com/np/hx
-license:             GPL-3
+license:             GPL-3.0-only
 license-file:        LICENSE
 author:              Nicolas Pouillard
 maintainer:          nicolas.pouillard@gmail.com
 copyright:           Nicolas Pouillard (2014)
-category:            Network
+category:            Network, Bitcoin, Finance
 build-type:          Simple
--- extra-source-files:  
-cabal-version:       >=1.10
+extra-doc-files:     README.md
 
 executable hx
   main-is:             hx.hs
-  other-modules:       DetailedTx
+  other-modules:       Context
+                       DetailedTx
+                       EC
                        Electrum
+                       Keys
+                       Message
                        Mnemonic
                        ParseScript
                        PrettyScript
                        Utils
-  ghc-options:         -Wall
-  build-depends:       base >=4.8, haskoin, bytestring, base16-bytestring,
-                       scientific, binary, RFC1751 >= 0.3, containers,
-                       aeson, cryptohash, pbkdf,
-                       -- required by aeson
-                       attoparsec, hashable, unordered-containers, text,
-                       -- required by haskoin
-                       either
-  default-language:    Haskell2010
-  -- other-extensions:    
+  ghc-options:         -Wall -threaded -rtsopts
+  build-depends:       base >=4.18 && <5
+                     , aeson >=2.2
+                     , bytes >=0.17
+                     , bytestring >=0.11
+                     , containers >=0.6
+                     , crypton >=1.0
+                     , directory >=1.3
+                     , entropy >=0.4
+                     , haskoin-core >=1.6
+                     , ram >=0.22
+                     , rfc1751 >=0.1.4
+                     , scientific >=0.3
+                     , secp256k1-haskell >=2.0
+                     , text >=2.0
+  default-language:    GHC2021
