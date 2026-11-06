@@ -25,12 +25,12 @@ Features
   sorting).
 * **HD wallets**: BIP32 derivation with private, public and hardened paths;
   direct derivation of BIP44, BIP49, BIP84 and BIP86 addresses from a path;
-  detailed JSON description of extended keys.
+  detailed description of extended keys.
 * **Mnemonics**: BIP39 (generation, entropy, seed with passphrase), SLIP-39
   Shamir secret sharing (split and combine), legacy Electrum mnemonics,
   RFC1751.
 * **Transactions**: build transactions with any output type, OP_RETURN data
-  outputs, version, lock time and opt-in RBF; decode to JSON (txid, wtxid,
+  outputs, version, lock time and opt-in RBF; decode (txid, wtxid,
   size, vsize, weight, witnesses, output types and addresses); sign inputs
   for legacy, SegWit v0 (BIP143) and Bitcoin Cash (SIGHASH_FORKID); set
   scripts and witnesses; verify signatures.
@@ -46,6 +46,8 @@ Features
 * **Encodings and hashes**: hex, Base58, Base58Check, Bech32/Bech32m, Base64,
   SHA-1, SHA-256, SHA-512, RIPEMD-160, HASH160, HASH256, BIP340 tagged hashes,
   HMAC-SHA224/256/384/512, PBKDF1 and PBKDF2, satoshi and coin amounts.
+* **Readable output**: YAML with colors on terminals, or JSON (`--json`)
+  for `jq` and other tools.
 * **Elliptic curve maths** on secp256k1: point addition, doubling,
   multiplication and field arithmetic.
 
@@ -93,14 +95,14 @@ of them taken from the reference vectors of the BIPs, the CashAddr and SLIP-39
 specifications and Bitcoin Core.
 
     $ stack build && tests/run-tests.sh
-    317 passed, 0 failed
+    331 passed, 0 failed
 
 Use `tests/run-tests.sh -v tests/addr.t` to run a single test.
 
 Usage
 -----
 
-    hx [-n|--network NETWORK] COMMAND [ARGS...]
+    hx [-n|--network NETWORK] [-j|--json] [-y|--yaml] [--color[=WHEN]] COMMAND [ARGS...]
 
 * The network defaults to `$HX_NETWORK`, or `btc` when unset. `hx networks`
   lists the networks and their aliases (`btc`, `testnet`, `testnet4`,
@@ -109,6 +111,40 @@ Usage
   a single `-` argument is replaced by standard input.
 * Command names are case-insensitive.
 * `hx help` prints the full list of commands.
+
+### Output formats
+
+Results print as **YAML** by default, laid out over several lines with
+related fields together. `-j`/`--json` (or `HX_FORMAT=json`) prints **JSON**
+instead, for `jq` and other tools: indented on a terminal, and on a single
+line when piped. `-y`/`--yaml` switches back. The long options may also come
+after the command, as in `hx showtx tx.hex --json`.
+
+* A result that is a single value (an address, a key, a hex string) prints
+  bare in YAML mode, so commands can be piped into each other:
+  `hx bip39-seed | hx hd-priv`. In JSON mode it is a JSON string.
+* Verifications (`validaddr`, `validsig`, `verify-hash`, `schnorr-verify`,
+  `message-verify`, `verifysig-modn`) print `true` or `false`, and exit with
+  status 1 when false, so they can be used directly in shell conditions.
+* Colors are used when the output is a terminal. `--color=always`,
+  `--color=never` (or `--no-color`) and `--color=auto` choose explicitly;
+  the [`NO_COLOR`](https://no-color.org) variable and `TERM=dumb` turn
+  automatic colors off. Errors on standard error are colored the same way.
+
+```
+$ hx addr-info 1JwSSubhmg6iPtRjtyqhUYYH7bZg3Lfy1T
+address: 1JwSSubhmg6iPtRjtyqhUYYH7bZg3Lfy1T
+network: btc
+type: p2pkh
+version: 0
+hash: c4c5d791fcb4654a1ef5e03fe0ad3d9c598f9827
+script:
+  asm: dup hash160 [ c4c5d791fcb4654a1ef5e03fe0ad3d9c598f9827 ] equalverify checksig
+  hex: 76a914c4c5d791fcb4654a1ef5e03fe0ad3d9c598f982788ac
+$ hx --json addr-info 1JwSSubhmg6iPtRjtyqhUYYH7bZg3Lfy1T | jq -r .script.hex
+76a914c4c5d791fcb4654a1ef5e03fe0ad3d9c598f982788ac
+$ if hx validaddr "$ADDRESS" > /dev/null; then echo valid; fi
+```
 
 On Bitcoin Cash networks addresses are printed in CashAddr form and
 signatures use SIGHASH_FORKID; SegWit and Taproot outputs are not available.
@@ -139,7 +175,17 @@ The same key on Bitcoin Cash, and conversions between address forms:
     $ echo bitcoincash:qqhqn6r60vtkal0tddf900ngme28xzgczcdd37lrxz | hx -n bch addr-convert --to legacy
     15CRxFdyRpGZLW9w8HnHvVduizdL5jKNbs
     $ hx -n bch addr-info bitcoincash:qqhqn6r60vtkal0tddf900ngme28xzgczcdd37lrxz
-    {"address":"bitcoincash:qqhqn6r60vtkal0tddf900ngme28xzgczcdd37lrxz","cashaddr":"bitcoincash:qqhqn6r60vtkal0tddf900ngme28xzgczcdd37lrxz","hash":"2e09e87a7b176efdeb6b5257be68de5473091816","legacy":"15CRxFdyRpGZLW9w8HnHvVduizdL5jKNbs","network":"bch","script":"76a9142e09e87a7b176efdeb6b5257be68de547309181688ac","token":"bitcoincash:zqhqn6r60vtkal0tddf900ngme28xzgczc28zq39e3","type":"p2pkh","version":0}
+    address: bitcoincash:qqhqn6r60vtkal0tddf900ngme28xzgczcdd37lrxz
+    network: bch
+    type: p2pkh
+    version: 0
+    hash: 2e09e87a7b176efdeb6b5257be68de5473091816
+    script:
+      asm: dup hash160 [ 2e09e87a7b176efdeb6b5257be68de5473091816 ] equalverify checksig
+      hex: 76a9142e09e87a7b176efdeb6b5257be68de547309181688ac
+    legacy: 15CRxFdyRpGZLW9w8HnHvVduizdL5jKNbs
+    cashaddr: bitcoincash:qqhqn6r60vtkal0tddf900ngme28xzgczcdd37lrxz
+    token: bitcoincash:zqhqn6r60vtkal0tddf900ngme28xzgczc28zq39e3
 
 Generate a new key, and convert between WIF and raw secrets:
 
@@ -197,12 +243,27 @@ Hardened steps are written `'`, `h` or `H`.
     bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr
     $ echo $SEED | hx -n bch hd-path "A/44'/145'/0'/0/0"
     bitcoincash:qqyx49mu0kkn9ftfj6hje6g2wfer34yfnq5tahq3q6
-    $ echo $SEED | hx hd-path "M/84'/0'/0'" | hx hd-decode   # JSON details
+    $ echo $SEED | hx hd-path "M/84'/0'/0'" | hx hd-decode
+    type: xpub
+    network: btc
+    depth: 3
+    index: 0
+    hardened: true
+    fingerprint: fd13aac9
+    parent_fingerprint: 7ef32bdb
+    chain_code: 4a53a0ab21b9dc95869c4e92a161194e03c0ef3ff5014ac692f433c4765490fc
+    xpub: xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V
+    pubkey: 02707a62fdacc26ea9b63b1c197906f56ee0180d0bcf1966e1a2da34f5f3a09a9b
+    addresses:
+      p2pkh: 1Q59X2jXqdASameV9tGgGKbCg7Z3UAzUHN
+      p2wpkh: bc1ql5f64jdzjsvgehlpxvdgm9ygp0xta7xpnueh03
+      p2sh-p2wpkh: 36yDdNRzptaVBAv6KP9Fu31E5TKgyZSDsW
+      p2tr: bc1p62cwvk8ve4mux8zhsp0h32h7dzl5ndgmmunk73hldvqx07y8pd0qd45eqq
 
 Split a secret into SLIP-39 shares (any 2 of 3 recover it):
 
     $ echo 0123456789abcdef0123456789abcdef | hx slip39-split 2 3 passphrase > shares
-    $ sed -n '1p;3p' shares | hx slip39-combine passphrase
+    $ sed -n '1p;3p' shares | hx slip39-combine passphrase   # shares print as a list
     0123456789abcdef0123456789abcdef
 
 ### Signed messages and Schnorr signatures
@@ -211,7 +272,7 @@ Split a secret into SLIP-39 shares (any 2 of 3 recover it):
     IPojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=
     $ hx message-verify 15CRxFdyRpGZLW9w8HnHvVduizdL5jKNbs \
         IPojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk= "Trust no one"
-    Status: Success
+    true
     $ hx message-sign --type p2wpkh $K "Trust no one"   # BIP137 header for bc1q addresses
 
     $ hx schnorr-sign KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU74sHUHy8S \
@@ -231,15 +292,42 @@ attach the previous transaction, sign, finalize and extract it.
         --output 1MyKMeDsom7rYcp69KpbKn4DcyuvLMkLYJ:90000 \
         --data 68656c6c6f
     $ hx psbt-create unsigned.tx | hx psbt-add-utxo 0 prev.tx > tx.psbt
-    $ hx psbt-decode tx.psbt | jq .fee
+    $ hx --json psbt-decode tx.psbt | jq .fee
     10000
     $ hx psbt-sign $K tx.psbt | hx psbt-finalize | hx psbt-extract > signed.tx
-    $ hx showtx signed.tx | jq '{txid, vsize, weight}'
-    {
-      "txid": "171991de9084f82074f816451df5e8ce1559c93019cf3dc170bf0a969b0892a8",
-      "vsize": 129,
-      "weight": 513
-    }
+    $ hx showtx signed.tx
+    txid: 171991de9084f82074f816451df5e8ce1559c93019cf3dc170bf0a969b0892a8
+    wtxid: f948fe49892a78601f1392ce56f3e3dfff0801596c3cf8906021c7557f4464cd
+    version: 2
+    locktime: 0
+    rbf: true
+    size: 210
+    vsize: 129
+    weight: 513
+    value_out: 90000
+    inputs:
+      - outpoint: c6da1b9c8674fd9a4d07f2a87be849f2f439ddc5ccdc1410ef3e5d760233dedd:0
+        sequence: 4294967293
+        address: bc1q9cy7s7nmzah0m6mt2ftmu6x723esjxqkkl4wsw
+        witness:
+          - 304402202f3f41d82642740cbd26c4b36466483d679c8aff50dc01cf9fc419e02ad3c2fb02207dbc347e55941ea4115eb4d2ac233031d588534e4554f61f9504663b2281297101
+          - 03d2be3dddb497c7c4388cfcb941e14a222cf3e26fe5e2cc260da1821e60d26022
+    outputs:
+      - index: 0
+        value: 90000
+        type: p2pkh
+        address: 1MyKMeDsom7rYcp69KpbKn4DcyuvLMkLYJ
+        script:
+          asm: dup hash160 [ e60921dbfe1e066113f1c6e0ea15517234187d47 ] equalverify checksig
+          hex: 76a914e60921dbfe1e066113f1c6e0ea15517234187d4788ac
+      - index: 1
+        value: 0
+        type: nulldata
+        script:
+          asm: return [ 68656c6c6f ]
+          hex: 6a0568656c6c6f
+    $ hx --json showtx signed.tx | jq -c '{txid, vsize, weight}'
+    {"txid":"171991de9084f82074f816451df5e8ce1559c93019cf3dc170bf0a969b0892a8","vsize":129,"weight":513}
 
 When the previous transaction is not at hand, give the spent amount and
 script (or address) instead: `hx psbt-add-witness-utxo 0 100000 bc1q...`.
@@ -256,7 +344,7 @@ amount of the spent output, given with `--value`.
     $ SIG=$(echo $K | hx sign-input unsigned.tx 0 $SCRIPT_CODE --segwit --value 100000)
     $ hx set-witness unsigned.tx 0 $SIG $(echo $K | hx pubkey) > signed.tx
     $ echo $K | hx pubkey | hx validsig signed.tx 0 $SCRIPT_CODE $SIG --segwit --value 100000
-    Status: OK
+    true
 
 `--sighash` takes `all`, `none` or `single`, optionally followed by
 `+anyonecanpay`.
@@ -321,7 +409,7 @@ List of commands
     # TRANSACTIONS
     hx mktx <TXFILE> --input <TXID>:<INDEX>... --output <ADDR>:<SATOSHIS>...
             [--data <HEX>] [--version N] [--locktime N] [--sequence N] [--rbf]
-    hx showtx [-j|--json] [<TXFILE>]
+    hx showtx [<TXFILE>]
     hx txid [<TXFILE>]
     hx sign-input <TXFILE> <INDEX> <SCRIPT_CODE> [--value SATOSHIS] [--segwit] [--sighash TYPE]
     hx set-input <TXFILE> <INDEX> <SCRIPT>
@@ -443,16 +531,22 @@ List of commands
 Compatibility notes
 -------------------
 
-Version 0.2 moves hx from the 2015 `haskoin` package to `haskoin-core` 1.6.
-The commands of earlier versions keep their names, arguments and output,
-with these exceptions:
+Version 0.3 changes the output format: results are YAML or JSON documents
+rather than ad hoc text.
 
-* `showtx` and `hd-decode` print their JSON objects with sorted keys and
-  include new fields (`txid`, `wtxid`, `size`, `vsize`, `weight`,
-  `witness`, output `type`, `fingerprint`, `xprv`/`xpub` and the addresses
-  of every type). All the fields of before are still present.
-* `pbkdf` commands given `--hex` arguments now use the raw bytes rather than
-  their UTF-8 re-encoding.
+* `showtx`, `hd-decode`, `addr-info` and `psbt-decode` have reorganized
+  fields (for example `txid` instead of `hash`, scripts as `asm` and `hex`,
+  inputs with an `outpoint`).
+* `base58check-decode` and `bech32-decode` print documents with named fields
+  instead of space-separated values; `networks`, `slip39-split` and Electrum
+  key ranges print lists.
+* Verifications print `true` or `false` instead of `Status: ...` and exit
+  with status 1 when false.
+* `mktx` ends its output with a newline when it prints to standard output.
+
+Version 0.2 moved hx from the 2015 `haskoin` package to `haskoin-core` 1.6.
+Its `pbkdf` commands use the raw bytes of `--hex` arguments rather than
+their UTF-8 re-encoding.
 
 License
 -------

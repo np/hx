@@ -3,7 +3,7 @@
 testname=message-verify-wrong-message.t
 command=hx
 args=( message-verify 15CRxFdyRpGZLW9w8HnHvVduizdL5jKNbs IPojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk= 'Trust no one!' )
-exit_code=0
+exit_code=1
 stdin_file=/dev/null
 stdout_file=stdout
 stderr_file=/dev/null

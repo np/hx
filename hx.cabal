@@ -1,6 +1,6 @@
 cabal-version:       2.4
 name:                hx
-version:             0.2.0.0
+version:             0.3.0.0
 synopsis:            Bitcoin and Bitcoin Cash command line tools
 description:
   A Swiss-army knife for Bitcoin (BTC) and Bitcoin Cash (BCH) built on
@@ -27,6 +27,7 @@ executable hx
                        Keys
                        Message
                        Mnemonic
+                       Output
                        ParseScript
                        PrettyScript
                        Utils

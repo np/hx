@@ -6,7 +6,7 @@ module Main (main) where
 import Context (ctx)
 import Control.Applicative ((<|>))
 import Control.Exception
-import Control.Monad (forM_, unless, when)
+import Control.Monad (unless, when)
 import Crypto.Hash (HashAlgorithm)
 import Crypto.Hash.Algorithms (SHA1 (..), SHA224 (..), SHA256 (..), SHA384 (..), SHA512 (..))
 import qualified Crypto.KDF.PBKDF2 as PBKDF2
@@ -19,7 +19,6 @@ import Data.Bytes.Get (runGetS)
 import Data.Bytes.Serial (deserialize)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
-import qualified Data.ByteString.Lazy as LBS
 import Data.Char (isDigit, toLower)
 import Data.Foldable (foldlM)
 import Data.List (stripPrefix)
@@ -27,7 +26,8 @@ import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Scientific (FPFormat (Fixed), formatScientific)
 import qualified Data.Text as T
 import Data.Word (Word32, Word64)
-import DetailedTx (outputType, txDetailedJSON, txDetailedValue, xPrvDetails, xPubDetails)
+import DetailedTx (outputType, scriptDetails, txDetails, xPrvDetails, xPubDetails)
+import Output
 import EC
 import Electrum
 import Haskoin hiding (decodeHex, encodeHex)
@@ -131,7 +131,7 @@ hx_newkey net args = do
   let (unc, rest) = takeFlag ["--uncompressed", "-u"] args
   no_args "hx newkey [--uncompressed]" rest (return ())
   k <- newSecKey
-  B8.putStrLn . toWifBS net $ wrapSecKey (not unc) k
+  emit . toWifBS net $ wrapSecKey (not unc) k
 
 brainwallet :: Network -> BS -> BS
 brainwallet net = toWifBS net . wrapSecKey False . secKeyE . sha256BS
@@ -248,8 +248,8 @@ hx_hd_pub net mi = fromText . xPubExport net ctx . f . pubXK . xKeyImportE net
   where
     f = maybe id (flip (pubSubKey ctx)) mi
 
-hx_hd_decode :: Network -> BS -> BS
-hx_hd_decode net s = LBS.toStrict . A.encode $ case xKeyImportE net s of
+hx_hd_decode :: Network -> BS -> Val
+hx_hd_decode net s = case xKeyImportE net s of
   XKPrv k -> xPrvDetails net k
   XKPub k -> xPubDetails net k
 
@@ -291,7 +291,7 @@ hx_bip39_new args = do
   unless (n `elem` [12, 15, 18, 21, 24]) $
     error "The number of words must be 12, 15, 18, 21 or 24"
   ent <- getEntropy (n * 4 `div` 3)
-  B8.putStrLn . either error fromText $ toMnemonic ent
+  emit . either error fromText $ toMnemonic ent
 
 hx_slip39_split :: [BS] -> IO ()
 hx_slip39_split args = case args of
@@ -306,7 +306,7 @@ hx_slip39_split args = case args of
     r <- generateMnemonics (Scheme 1 [(threshold, count)]) True 1 pass secret
     case r of
       Left e -> error e
-      Right groups -> mapM_ (B8.putStrLn . fromText) (concat groups)
+      Right groups -> emit (toVal (concat groups))
   _ -> usageErr
   where
     usageErr = error "Usage: hx slip39-split <THRESHOLD> <SHARES> [<PASSPHRASE>]"
@@ -317,8 +317,18 @@ hx_slip39_combine args = do
         [] -> ""
         [p] -> toText p
         _ -> error "Usage: hx slip39-combine [<PASSPHRASE>]"
-  shares <- filter (not . T.null) . map T.strip . T.lines . toText <$> BS.getContents
-  B8.putStrLn . encodeHex . either error id $ combineMnemonics pass shares
+  shares <- readList' <$> BS.getContents
+  emit . encodeHex . either error id $ combineMnemonics pass shares
+
+-- | Read a list of strings: a JSON array, a YAML list ("- " items) or one
+-- item per line.
+readList' :: BS -> [T.Text]
+readList' input
+  | Just items <- A.decodeStrict (trim input) = items
+  | otherwise = filter (not . T.null) . map (unquote . dropDash . T.strip) . T.lines $ toText input
+  where
+    dropDash l = maybe l T.strip (T.stripPrefix "- " l)
+    unquote l = fromMaybe l (A.decodeStrict (fromText l))
 
 hx_mnemonic :: BS -> BS
 hx_mnemonic s = case B8.words s of
@@ -351,17 +361,9 @@ hx_satoshi = B8.pack . formatScientific Fixed (Just 0) . (* one_btc_in_satoshi) 
 ------------------------------------------------------------------------------
 -- Addresses
 
-putSuccess :: Bool -> BS
-putSuccess True = "Status: Success"
-putSuccess False = "Status: Invalid"
 
--- Just here to conform to `sx'
-putSuccess' :: Bool -> BS
-putSuccess' True = "Status: OK"
-putSuccess' False = "Status: Failed"
-
-hx_validaddr :: Network -> BS -> BS
-hx_validaddr net = putSuccess . isJust . textToAddr net . T.strip . toText
+hx_validaddr :: Network -> BS -> Verdict
+hx_validaddr net = Verdict . isJust . textToAddr net . T.strip . toText
 
 hx_decode_addr :: Network -> BS -> BS
 hx_decode_addr net = encodeHex . addressBytes . parseAddr net
@@ -407,13 +409,13 @@ addrTypeName a = case a of
   CashAddress {} -> "cash_unknown"
 
 -- | Bitcoin Cash forms of an address: legacy, CashAddr and token-aware.
-cashForms :: Network -> Address -> [(A.Key, A.Value)]
+cashForms :: Network -> Address -> [(T.Text, Val)]
 cashForms net a
   | not (isCashNet net) = []
   | otherwise =
-      [ "legacy" A..= (toText <$> (fromText <$> addrToBase58 net (plain a))),
-        "cashaddr" A..= (addrToCash net (plain a)),
-        "token" A..= (tokenAware a >>= addrToCash net)
+      [ "legacy" .: addrToBase58 net (plain a),
+        "cashaddr" .: addrToCash net (plain a),
+        "token" .: (tokenAware a >>= addrToCash net)
       ]
 
 plain :: Address -> Address
@@ -430,15 +432,15 @@ tokenAware a = case a of
   CashAddress 3 _ -> Just a
   _ -> Nothing
 
-hx_addr_info :: Network -> BS -> BS
+hx_addr_info :: Network -> BS -> Val
 hx_addr_info net s =
-  LBS.toStrict . A.encode . A.object $
-    [ "address" A..= toText (addrText net a),
-      "network" A..= net.name,
-      "type" A..= addrTypeName a,
-      "version" A..= addressVersion a,
-      "hash" A..= toText (encodeHex (addressBytes a)),
-      "script" A..= (toText . encodeHex <$> addressToScriptBS ctx (plain a))
+  obj $
+    [ "address" .: addrText net a,
+      "network" .: T.pack net.name,
+      "type" .: addrTypeName a,
+      "version" .: addressVersion a,
+      "hash" .: encodeHex (addressBytes a),
+      "script" .: (scriptDetails net <$> addressToScriptBS ctx (plain a))
     ]
       ++ cashForms net a
   where
@@ -509,13 +511,13 @@ hx_base58check_encode args = fromText . encodeBase58Check . BS.cons ver . decode
       [x] -> parseWord8 "version byte" x
       _ -> error "Usage: hx base58check-encode [<VERSION-BYTE>]"
 
-hx_base58check_decode :: [BS] -> BS -> BS
+hx_base58check_decode :: [BS] -> BS -> Val
 hx_base58check_decode args
   | null args = wrap . BS.uncons . chksum32_decode . decodeBase58E
   | otherwise = error "Usage: hx base58check-decode"
   where
-    wrap (Just (x, xs)) = encodeHex xs <> " " <> showB8 x
-    wrap Nothing = ""
+    wrap (Just (x, xs)) = obj ["version" .: x, "payload" .: encodeHex xs]
+    wrap Nothing = error "empty base58check payload"
 
 chksum32_encode :: BS -> BS
 chksum32_encode d = d <> chksum32BS d
@@ -546,23 +548,23 @@ hx_bech32_encode args input = case args' of
     (m, args') = takeFlag ["--m", "--bech32m"] args
     enc = if m then Bech32m else Bech32
 
-hx_bech32_decode :: BS -> BS
+hx_bech32_decode :: BS -> Val
 hx_bech32_decode s =
   case bech32Decode (T.toLower (T.strip (toText s))) of
     Nothing -> error "invalid bech32 string"
     Just (enc, hrp, dat) ->
-      B8.unwords
-        [ fromText hrp,
-          encodeHex . BS.pack . fromMaybe (error "invalid bech32 data padding") $ toBase256 dat,
-          if enc == Bech32m then "bech32m" else "bech32"
+      obj
+        [ "hrp" .: hrp,
+          "encoding" .: (if enc == Bech32m then "bech32m" else "bech32" :: T.Text),
+          "data" .: (encodeHex . BS.pack . fromMaybe (error "invalid bech32 data padding") $ toBase256 dat)
         ]
 
 ------------------------------------------------------------------------------
 -- Signatures
 
-hx_verifysig_modn :: [BS] -> BS
+hx_verifysig_modn :: [BS] -> Verdict
 hx_verifysig_modn [m, pub, sigHex] =
-  putSuccess $ case Secp.importSig ctx (decodeHex "signature" sigHex) of
+  Verdict $ case Secp.importSig ctx (decodeHex "signature" sigHex) of
     Nothing -> False
     Just s -> verifyHashSig ctx (hashOfModN m) s (getPubKey pub).point
 hx_verifysig_modn _ = error "Usage: hx verifysig-modn <MESSAGE-DECIMAL-INTEGER> <PUBKEY> <SIGNATURE>"
@@ -583,9 +585,9 @@ hx_sign_hash net [prv, h] =
   encodeHex . Secp.exportSig ctx $ signHash ctx (fromWifE net prv).key (hash256E h)
 hx_sign_hash _ _ = error "Usage: hx sign-hash <PRIVKEY> <HEX-HASH32>"
 
-hx_verify_hash :: [BS] -> BS
+hx_verify_hash :: [BS] -> Verdict
 hx_verify_hash [pub, sigHex, h] =
-  putSuccess $ case Secp.importSig ctx (decodeHex "signature" sigHex) of
+  Verdict $ case Secp.importSig ctx (decodeHex "signature" sigHex) of
     Nothing -> False
     Just s -> verifyHashSig ctx (hash256E h) s (getPubKey pub).point
 hx_verify_hash _ = error "Usage: hx verify-hash <PUBKEY> <DER-SIGNATURE> <HEX-HASH32>"
@@ -598,9 +600,9 @@ hx_schnorr_sign net [prv, m] =
   encodeHex . (.get) $ Secp.signSchnorr ctx (fromWifE net prv).key (schnorrMsg m)
 hx_schnorr_sign _ _ = error "Usage: hx schnorr-sign <PRIVKEY> <HEX-MESSAGE32>"
 
-hx_schnorr_verify :: [BS] -> BS
+hx_schnorr_verify :: [BS] -> Verdict
 hx_schnorr_verify [pub, sigHex, m] =
-  putSuccess . fromMaybe False $ do
+  Verdict . fromMaybe False $ do
     p <- Secp.importXOnlyPubKey ctx (decodeHexBytes "x-only public key" 32 pub)
     s <- Secp.schnorrSig (decodeHexBytes "Schnorr signature" 64 sigHex)
     return $ Secp.verifySchnorr ctx p s (schnorrMsg m)
@@ -613,9 +615,9 @@ hx_message_sign net args0 = case args of
   where
     (ty, args) = addrTypeOpt args0
 
-hx_message_verify :: Network -> [BS] -> BS
+hx_message_verify :: Network -> [BS] -> Verdict
 hx_message_verify net [a, sigB64, m] =
-  putSuccess . either (const False) id $ verifyMessage (parseAddr net a) sigB64 m
+  Verdict . either (const False) id $ verifyMessage (parseAddr net a) sigB64 m
 hx_message_verify _ _ = error "Usage: hx message-verify <ADDRESS> <SIGNATURE> <MESSAGE>"
 
 ------------------------------------------------------------------------------
@@ -665,15 +667,12 @@ hx_mktx net args0 = putTx (Tx o.ver [TxIn op "" o.sq | op <- o.ins] o.outs [] o.
     go (arg : _) _ = error $ "mktx: unexpected argument " ++ show arg
 
 hx_showtx :: Network -> [BS] -> IO ()
-hx_showtx net args = case filter (`notElem` ["-j", "--json"]) args of
+hx_showtx net args = case args of
   [] -> out =<< readTxFile "-"
   [file] -> out =<< readTxFile file
-  _ -> error "Usage: hx showtx [-j|--json] [<TXFILE>]"
+  _ -> error "Usage: hx showtx [<TXFILE>]"
   where
-    out tx = do
-      let j = txDetailedJSON net tx
-      _ <- evaluate (LBS.length j)
-      LBS.putStr j
+    out = emit . txDetails net
 
 hx_txid :: [BS] -> IO ()
 hx_txid args = case args of
@@ -681,7 +680,7 @@ hx_txid args = case args of
   [f] -> go f
   _ -> error "Usage: hx txid [<TXFILE>]"
   where
-    go f = B8.putStrLn . fromText . txHashToHex . txHash =<< readTxFile f
+    go f = emit . fromText . txHashToHex . txHash =<< readTxFile f
 
 -- | Parse a sighash: all, none or single, optionally followed by
 -- +anyonecanpay (or |anyonecanpay, -acp).
@@ -740,7 +739,7 @@ hx_set_input file index script = do
   let i = parseInt "input index" index
       si = decodeHex "script" script
   checkIndex tx i
-  B8.putStrLn . putTx $ Tx tx.version (updateIndex i tx.inputs (\x -> TxIn x.outpoint si x.sequence)) tx.outputs tx.witness tx.locktime
+  emit . putTx $ Tx tx.version (updateIndex i tx.inputs (\x -> TxIn x.outpoint si x.sequence)) tx.outputs tx.witness tx.locktime
 
 hx_set_witness :: TxFile -> BS -> [BS] -> IO ()
 hx_set_witness file index items = do
@@ -750,7 +749,7 @@ hx_set_witness file index items = do
       wit0 = take n (tx.witness ++ repeat [])
       wit = updateIndex i wit0 (const (map (decodeHex "witness item") items))
   checkIndex tx i
-  B8.putStrLn . putTx $ Tx tx.version tx.inputs tx.outputs (if all null wit then [] else wit) tx.locktime
+  emit . putTx $ Tx tx.version tx.inputs tx.outputs (if all null wit then [] else wit) tx.locktime
 
 checkIndex :: Tx -> Int -> IO ()
 checkIndex tx i =
@@ -776,7 +775,7 @@ hx_validsig net file i s sigHex args = do
                 PayPK k -> k.point == pub.point
                 _ -> False
           return $ keyOk && verifyHashSig ctx h txsig pub.point
-     in putSuccess' ok
+     in Verdict ok
 
 ------------------------------------------------------------------------------
 -- PSBT (BIP 174 / BIP 370)
@@ -811,7 +810,7 @@ hx_psbt_create args = do
     [f] -> readTxFile f
     _ -> error "Usage: hx psbt-create [<TXFILE>]"
   let stripped = Tx tx.version [TxIn i.outpoint "" i.sequence | i <- tx.inputs] tx.outputs [] tx.locktime
-  B8.putStrLn . putPsbt $ psbtOf stripped
+  emit . putPsbt $ psbtOf stripped
 
 updateInput :: Int -> (PsbtMap -> PsbtMap) -> Psbt -> Psbt
 updateInput i f p
@@ -832,7 +831,7 @@ hx_psbt_add_utxo (i : prevFile : rest) = do
       segwitOut = case outputType out.script of
         t -> t `elem` ["p2wpkh", "p2wsh", "p2tr", "witness_unknown"]
       f = (if segwitOut then insertWitnessUtxo out else id) . insertNonWitnessUtxo prev
-  B8.putStrLn . putPsbt $ updateInput idx f p
+  emit . putPsbt $ updateInput idx f p
 hx_psbt_add_utxo _ = error "Usage: hx psbt-add-utxo <INDEX> <PREVIOUS-TXFILE> [<PSBT>]"
 
 hx_psbt_add_witness_utxo :: Network -> [BS] -> IO ()
@@ -843,7 +842,7 @@ hx_psbt_add_witness_utxo net (i : v : scr : rest) = do
         Nothing -> decodeHex "output script or address" scr
       evaluateAddr a = maybe (Left ()) Right (textToAddr net (toText a) >>= addressToScriptBS ctx . plain)
       out = TxOut (parseWord64 "value" v) script
-  B8.putStrLn . putPsbt $ updateInput (parseInt "input index" i) (insertWitnessUtxo out) p
+  emit . putPsbt $ updateInput (parseInt "input index" i) (insertWitnessUtxo out) p
 hx_psbt_add_witness_utxo _ _ = error "Usage: hx psbt-add-witness-utxo <INDEX> <VALUE> <SCRIPT|ADDRESS> [<PSBT>]"
 
 signerOf :: Network -> BS -> Signer
@@ -881,7 +880,7 @@ hx_psbt_sign net args = case args of
     p <- psbtArgDefault (last' rest)
     let signWith q k = signPsbt net ctx (signerOf net k) (addTapInternalKey net k q)
     signed <- either (error . ("cannot sign: " ++)) return $ foldlM signWith p keys
-    B8.putStrLn (putPsbt signed)
+    emit (putPsbt signed)
   _ -> error "Usage: hx psbt-sign <PRIVKEY|XPRV>... [<PSBT>]"
   where
     -- The last argument is the PSBT when it is not a key.
@@ -896,46 +895,47 @@ hx_psbt_combine args = case args of
   (a : as@(_ : _)) -> do
     p <- psbtArg a
     ps <- mapM psbtArg as
-    B8.putStrLn . putPsbt . either error id $ foldlM combinePsbt p ps
+    emit . putPsbt . either error id $ foldlM combinePsbt p ps
   _ -> error "Usage: hx psbt-combine <PSBT> <PSBT>..."
 
 hx_psbt_finalize :: Network -> [BS] -> IO ()
 hx_psbt_finalize net args = do
   p <- psbtArgDefault args
-  B8.putStrLn . putPsbt . either (error . ("cannot finalize: " ++)) id $ finalizePsbt net ctx p
+  emit . putPsbt . either (error . ("cannot finalize: " ++)) id $ finalizePsbt net ctx p
 
 hx_psbt_extract :: [BS] -> IO ()
 hx_psbt_extract args = do
   p <- psbtArgDefault args
-  B8.putStrLn . putTx . either (error . ("cannot extract: " ++)) id $ psbtTransaction p
+  emit . putTx . either (error . ("cannot extract: " ++)) id $ psbtTransaction p
 
 hx_psbt_decode :: Network -> [BS] -> IO ()
 hx_psbt_decode net args = do
   p <- psbtArgDefault args
-  let tx = p.unsignedTx
-      coins = either (const (map (const Nothing) p.inputs)) id (inputCoins p)
-      inputJ (m, coin) =
-        A.object $
-          [ "utxo" A..= (coinJ . (.coin) <$> coin),
-            "partial_signatures" A..= either (const 0) length (partialSignatures ctx m),
-            "taproot_key_signature" A..= either (const False) isJust (tapKeySig m),
-            "final" A..= (isJust (finalScriptSig m) || either (const False) isJust (finalScriptWitness m))
+  let coins = either (const (map (const Nothing) p.inputs)) id (inputCoins p)
+      inputV n (m, coin) =
+        obj
+          [ "index" .: (n :: Int),
+            "final" .: (isJust (finalScriptSig m) || either (const False) isJust (finalScriptWitness m)),
+            "partial_signatures" .: either (const 0) length (partialSignatures ctx m),
+            "taproot_key_signature" .: either (const False) isJust (tapKeySig m),
+            "utxo" .: (coinV . (.coin) <$> coin)
           ]
-      coinJ o =
-        A.object
-          [ "value" A..= o.value,
-            "script_hex" A..= toText (encodeHex o.script),
-            "type" A..= outputType o.script,
-            "address" A..= (toText <$> (eitherToMaybe (scriptToAddressBS net ctx o.script) >>= addrTextMaybe net))
+      coinV o =
+        obj
+          [ "value" .: o.value,
+            "type" .: outputType o.script,
+            "address" .: (eitherToMaybe (scriptToAddressBS net ctx o.script) >>= addrTextMaybe net),
+            "script" .: scriptDetails net o.script
           ]
-  LBS.putStr . (<> "\n") . A.encode . A.object $
-    [ "version" A..= (if p.version == Version0 then 0 else 2 :: Int),
-      "id" A..= txHashToHex (psbtId p),
-      "tx" A..= txDetailedValue net tx,
-      "inputs" A..= map inputJ (zip p.inputs (coins ++ repeat Nothing)),
-      "fee" A..= eitherToMaybe (psbtFee p),
-      "complete" A..= either (const False) (const True) (psbtTransaction p)
-    ]
+  emit $
+    obj
+      [ "id" .: txHashToHex (psbtId p),
+        "version" .: (if p.version == Version0 then 0 else 2 :: Int),
+        "complete" .: either (const False) (const True) (psbtTransaction p),
+        "fee" .: eitherToMaybe (psbtFee p),
+        "inputs" .: zipWith inputV [0 ..] (zip p.inputs (coins ++ repeat Nothing)),
+        "tx" .: txDetails net p.unsignedTx
+      ]
 
 ------------------------------------------------------------------------------
 -- Scripts
@@ -957,7 +957,7 @@ hmacWith :: forall a. (HashAlgorithm a) => a -> BS -> BS -> BS
 hmacWith _ k m = BA.convert (hmac k m :: HMAC a)
 
 hx_PBKDF1 :: (BS -> BS) -> BS -> [BS] -> IO ()
-hx_PBKDF1 h m = interactArgsLn go
+hx_PBKDF1 h m = interactArgs go
   where
     u = "hx " ++ B8.unpack m ++ " [--hex] <PASSWORD> [--hex] <SALT> <COUNT>"
     go args0 =
@@ -967,7 +967,7 @@ hx_PBKDF1 h m = interactArgsLn go
        in no_args u args3 . encodeHex $ iterate h (password <> salt) !! count
 
 hx_PBKDF2 :: (Int -> Int -> BS -> BS -> BS) -> BS -> [BS] -> IO ()
-hx_PBKDF2 f m = interactArgsLn go
+hx_PBKDF2 f m = interactArgs go
   where
     u = "hx " ++ B8.unpack m ++ " [--hex] <PASSWORD> [--hex] <SALT> <COUNT> <LENGTH>"
     go args0 =
@@ -1053,34 +1053,34 @@ mainArgs :: Network -> [BS] -> IO ()
 mainArgs net args0 = case args0 of
   -- Addresses
   ("addr" : args) -> interactLn $ hx_addr net args
-  ("validaddr" : args) -> interactArgLn "hx validaddr [<ADDRESS>]" (hx_validaddr net) args
+  ("validaddr" : args) -> interactArg "hx validaddr [<ADDRESS>]" (hx_validaddr net) args
   ("encode-addr" : args) -> interactLn $ hx_encode_addr net args
   ["decode-addr"] -> interactLn $ hx_decode_addr net
-  ("addr-info" : args) -> interactArgLn "hx addr-info [<ADDRESS>]" (hx_addr_info net) args
+  ("addr-info" : args) -> interactArg "hx addr-info [<ADDRESS>]" (hx_addr_info net) args
   ("addr-convert" : args) -> interactLn $ hx_addr_convert net args
-  ("addr-to-script" : args) -> interactArgLn "hx addr-to-script [<ADDRESS>]" (hx_addr_to_script net) args
-  ("script-to-addr" : args) -> interactArgLn "hx script-to-addr [<SCRIPT>]" (hx_script_to_addr net) args
+  ("addr-to-script" : args) -> interactArg "hx addr-to-script [<ADDRESS>]" (hx_addr_to_script net) args
+  ("script-to-addr" : args) -> interactArg "hx script-to-addr [<SCRIPT>]" (hx_script_to_addr net) args
   ("script-addr" : args) -> interactLn $ hx_script_addr net args
-  ("multisig" : args) -> B8.putStrLn $ hx_multisig args
+  ("multisig" : args) -> emit $ hx_multisig args
   -- Keys
   ("newkey" : args) -> hx_newkey net args
   ("pubkey" : args) -> interactLn $ hx_pubkey net args
   ["xonly-pubkey"] -> interactLn $ hx_xonly_pubkey net
-  ("brainwallet" : args) -> B8.putStrLn $ hx_brainwallet net args
+  ("brainwallet" : args) -> emit $ hx_brainwallet net args
   ["wif-to-secret"] -> interactLn $ hx_wif_to_secret net
   ("secret-to-wif" : args) -> interactLn $ hx_secret_to_wif net args
   ["mini-to-wif"] -> interactLn $ hx_mini_to_wif net
   ["compress"] -> interactLn $ hx_compress net
   ["uncompress"] -> interactLn $ hx_uncompress net
   -- Signatures and messages
-  ("verifysig-modn" : args) -> interactArgsLn hx_verifysig_modn args
-  ("signmsg-modn" : args) -> interactArgsLn (hx_signmsg_modn net) args
-  ("sign-hash" : args) -> interactArgsLn (hx_sign_hash net) args
-  ("verify-hash" : args) -> interactArgsLn hx_verify_hash args
-  ("schnorr-sign" : args) -> interactArgsLn (hx_schnorr_sign net) args
-  ("schnorr-verify" : args) -> interactArgsLn hx_schnorr_verify args
-  ("message-sign" : args) -> interactArgsLn (hx_message_sign net) args
-  ("message-verify" : args) -> interactArgsLn (hx_message_verify net) args
+  ("verifysig-modn" : args) -> interactArgs hx_verifysig_modn args
+  ("signmsg-modn" : args) -> interactArgs (hx_signmsg_modn net) args
+  ("sign-hash" : args) -> interactArgs (hx_sign_hash net) args
+  ("verify-hash" : args) -> interactArgs hx_verify_hash args
+  ("schnorr-sign" : args) -> interactArgs (hx_schnorr_sign net) args
+  ("schnorr-verify" : args) -> interactArgs hx_schnorr_verify args
+  ("message-sign" : args) -> interactArgs (hx_message_sign net) args
+  ("message-verify" : args) -> interactArgs (hx_message_verify net) args
   -- HD wallets
   ["hd-priv"] -> interactLn $ hx_hd_priv net Nothing
   ["hd-priv", i] -> interactLn . hx_hd_priv net $ Just (False, parseWord32 "hd-priv index" i)
@@ -1104,8 +1104,8 @@ mainArgs net args0 = case args0 of
   ["rfc1751-mnemonic"] -> interactLn hx_rfc1751_mnemonic
   ["mnemonic"] -> interactLn hx_mnemonic
   -- Encodings
-  ("btc" : args) -> interactArgLn "hx btc [<SATOSHIS>]" hx_btc args
-  ("satoshi" : args) -> interactArgLn "hx satoshi [<BTCS>]" hx_satoshi args
+  ("btc" : args) -> interactArg "hx btc [<SATOSHIS>]" hx_btc args
+  ("satoshi" : args) -> interactArg "hx satoshi [<BTCS>]" hx_satoshi args
   ["base58-encode"] -> interactLn hx_base58_encode
   ["base58-decode"] -> interactLn hx_base58_decode
   ("base58check-encode" : args) -> interactLn $ hx_base58check_encode args
@@ -1128,10 +1128,10 @@ mainArgs net args0 = case args0 of
   ("hash256" : args) -> interactHex "hx hash256   [<HEX-INPUT>]" hash256BS args
   ("hash160" : args) -> interactHex "hx hash160   [<HEX-INPUT>]" hash160BS args
   ("tagged-hash" : tag : args) -> interactHex "hx tagged-hash <TAG> [<HEX-INPUT>]" (taggedHashBS tag) args
-  ("hmac-sha224" : args) -> interactArgsLn (hx_hmac "sha224" (hmacWith SHA224)) args
-  ("hmac-sha256" : args) -> interactArgsLn (hx_hmac "sha256" (hmacWith SHA256)) args
-  ("hmac-sha384" : args) -> interactArgsLn (hx_hmac "sha384" (hmacWith SHA384)) args
-  ("hmac-sha512" : args) -> interactArgsLn (hx_hmac "sha512" (hmacWith SHA512)) args
+  ("hmac-sha224" : args) -> interactArgs (hx_hmac "sha224" (hmacWith SHA224)) args
+  ("hmac-sha256" : args) -> interactArgs (hx_hmac "sha256" (hmacWith SHA256)) args
+  ("hmac-sha384" : args) -> interactArgs (hx_hmac "sha384" (hmacWith SHA384)) args
+  ("hmac-sha512" : args) -> interactArgs (hx_hmac "sha512" (hmacWith SHA512)) args
   (arg@"sha1pbkdf1" : args) -> hx_PBKDF1 sha1BS arg args
   (arg@"sha256pbkdf1" : args) -> hx_PBKDF1 sha256BS arg args
   (arg@"sha512pbkdf1" : args) -> hx_PBKDF1 sha512BS arg args
@@ -1142,22 +1142,22 @@ mainArgs net args0 = case args0 of
   ("chksum32-encode" : args) -> interactArgs hx_chksum32_encode args
   ("chksum32-decode" : args) -> interactArgs hx_chksum32_decode args
   -- Elliptic curve
-  ("ec-double" : args) -> interactArgsLn hx_ec_double args
-  ("ec-add" : args) -> interactArgsLn hx_ec_add args
-  ("ec-multiply" : args) -> interactArgsLn hx_ec_multiply args
-  ("ec-tweak-add" : args) -> interactArgsLn hx_ec_tweak_add args
-  ("ec-add-modp" : args) -> interactArgsLn hx_ec_add_modp args
-  ("ec-add-modn" : args) -> interactArgsLn hx_ec_add_modn args
-  ["ec-g"] -> B8.putStrLn $ putPoint curveG
-  ["ec-p"] -> B8.putStrLn $ putHex32 curveP
-  ["ec-n"] -> B8.putStrLn $ putHex32 curveN
-  ["ec-a"] -> B8.putStrLn $ putHex32 curveA
-  ["ec-b"] -> B8.putStrLn $ putHex32 curveB
-  ["ec-inf"] -> B8.putStrLn $ putPoint Infinity
-  ("ec-int-modp" : args) -> interactArgsLn hx_ec_int_modp args
-  ("ec-int-modn" : args) -> interactArgsLn hx_ec_int_modn args
-  ("ec-x" : args) -> interactArgsLn hx_ec_x args
-  ("ec-y" : args) -> interactArgsLn hx_ec_y args
+  ("ec-double" : args) -> interactArgs hx_ec_double args
+  ("ec-add" : args) -> interactArgs hx_ec_add args
+  ("ec-multiply" : args) -> interactArgs hx_ec_multiply args
+  ("ec-tweak-add" : args) -> interactArgs hx_ec_tweak_add args
+  ("ec-add-modp" : args) -> interactArgs hx_ec_add_modp args
+  ("ec-add-modn" : args) -> interactArgs hx_ec_add_modn args
+  ["ec-g"] -> emit $ putPoint curveG
+  ["ec-p"] -> emit $ putHex32 curveP
+  ["ec-n"] -> emit $ putHex32 curveN
+  ["ec-a"] -> emit $ putHex32 curveA
+  ["ec-b"] -> emit $ putHex32 curveB
+  ["ec-inf"] -> emit $ putPoint Infinity
+  ("ec-int-modp" : args) -> interactArgs hx_ec_int_modp args
+  ("ec-int-modn" : args) -> interactArgs hx_ec_int_modn args
+  ("ec-x" : args) -> interactArgs hx_ec_x args
+  ("ec-y" : args) -> interactArgs hx_ec_y args
   -- Transactions
   ("mktx" : file : args) -> interactFileArgs (hx_mktx net) file args
   ("showtx" : args) -> hx_showtx net args
@@ -1176,7 +1176,7 @@ mainArgs net args0 = case args0 of
   ("psbt-finalize" : args) -> hx_psbt_finalize net args
   ("psbt-extract" : args) -> hx_psbt_extract args
   -- Scripts
-  ("rawscript" : args) -> interactArgsLn (hx_rawscript . B8.unwords) args
+  ("rawscript" : args) -> interactArgs (hx_rawscript . B8.unwords) args
   ["showscript"] -> interactLn $ hx_showscript net
   -- Electrum
   ["electrum-mpk"] -> interactLn hx_electrum_mpk
@@ -1186,19 +1186,25 @@ mainArgs net args0 = case args0 of
   ("electrum-seq" : args) -> interactLn $ hx_electrum_sequence args
   ["electrum-stretch-seed"] -> interactLn hx_electrum_stretch_seed
   -- Misc
-  ["networks"] -> forM_ networkNames $ \(n, aliases) ->
-    putStrLn $ n ++ replicate (10 - length n) ' ' ++ unwords aliases
-  ["help"] -> putStr usage
-  ["--help"] -> putStr usage
-  ["-h"] -> putStr usage
-  ["version"] -> putStrLn "hx 0.2.0.0"
-  ["--version"] -> putStrLn "hx 0.2.0.0"
+  ["networks"] ->
+    emit $ List [obj ["name" .: T.pack n, "aliases" .: map T.pack aliases] | (n, aliases) <- networkNames]
+  ["help"] -> putStr =<< colorHelp usage
+  ["--help"] -> putStr =<< colorHelp usage
+  ["-h"] -> putStr =<< colorHelp usage
+  ["version"] -> emit ("hx " <> version :: BS)
+  ["--version"] -> emit ("hx " <> version :: BS)
   _ -> error $ "Unexpected arguments.\n\n" ++ usage
 
 usage :: String
 usage =
   unlines
-    [ "Usage: hx [-n|--network NETWORK] COMMAND [ARGS...]",
+    [ "Usage: hx [-n|--network NETWORK] [-j|--json] [-y|--yaml] [--color[=WHEN]] COMMAND [ARGS...]",
+      "",
+      "Results print as YAML, or as JSON with --json (or HX_FORMAT=json); JSON is",
+      "compact when the output is not a terminal. Colors are used on terminals;",
+      "--color=always|never|auto and NO_COLOR override that. A result that is a",
+      "single value prints bare. Verifications print true or false and exit with",
+      "status 1 when false.",
       "",
       "Command names are case-insensitive: SHA256 is equivalent to sha256.",
       "NETWORK defaults to $HX_NETWORK or btc. See `hx networks`.",
@@ -1245,7 +1251,7 @@ usage =
       "# TRANSACTIONS",
       "hx mktx <TXFILE> --input <TXID>:<INDEX>... --output <ADDR>:<SATOSHIS>...",
       "        [--data <HEX>] [--version N] [--locktime N] [--sequence N] [--rbf]",
-      "hx showtx [-j|--json] [<TXFILE>]",
+      "hx showtx [<TXFILE>]",
       "hx txid [<TXFILE>]",
       "hx sign-input <TXFILE> <INDEX> <SCRIPT_CODE> [--value SATOSHIS] [--segwit] [--sighash TYPE]",
       "hx set-input <TXFILE> <INDEX> <SCRIPT>",
@@ -1375,14 +1381,42 @@ usage =
 ------------------------------------------------------------------------------
 -- Entry point
 
--- | Extract the global options that precede the command. A later
--- occurrence wins.
-globalOpts :: [String] -> (Maybe String, [String])
-globalOpts = go Nothing
+version :: BS
+version = "0.3.0.0"
+
+data Opts = Opts
+  { optNetwork :: Maybe String,
+    optJson :: Maybe Bool,
+    optColor :: ColorWhen
+  }
+
+-- | Extract the global options. The network and the short options must
+-- precede the command; the long output options are accepted anywhere.
+-- A later occurrence wins.
+globalOpts :: [String] -> (Opts, [String])
+globalOpts = lead (Opts Nothing Nothing ColorAuto)
   where
-    go _ (o : v : rest) | o `elem` ["-n", "--network"] = go (Just v) rest
-    go _ (o : rest) | Just v <- stripPrefix "--network=" o = go (Just v) rest
-    go n rest = (n, rest)
+    lead o (f : v : rest) | f `elem` ["-n", "--network"] = lead o {optNetwork = Just v} rest
+    lead o (f : rest) | Just v <- stripPrefix "--network=" f = lead o {optNetwork = Just v} rest
+    lead o ("-j" : rest) = lead o {optJson = Just True} rest
+    lead o ("-y" : rest) = lead o {optJson = Just False} rest
+    lead o (f : rest) | Just o' <- long o f = lead o' rest
+    lead o rest = anywhere o rest
+    anywhere o (f : rest)
+      | Just o' <- long o f = anywhere o' rest
+      | otherwise = let (o'', r) = anywhere o rest in (o'', f : r)
+    anywhere o [] = (o, [])
+    long o f = case f of
+      "--json" -> Just o {optJson = Just True}
+      "--yaml" -> Just o {optJson = Just False}
+      "--no-color" -> Just o {optColor = ColorNever}
+      "--color" -> Just o {optColor = ColorAlways}
+      "--color=always" -> Just o {optColor = ColorAlways}
+      "--color=never" -> Just o {optColor = ColorNever}
+      "--color=auto" -> Just o {optColor = ColorAuto}
+      _
+        | Just w <- stripPrefix "--color=" f -> error $ "--color expects always, never or auto, not " ++ show w
+        | otherwise -> Nothing
 
 reportError :: SomeException -> IO a
 reportError e
@@ -1391,17 +1425,28 @@ reportError e
   | Just (ioe :: IOException) <- fromException e = die' (show ioe)
   | otherwise = die' (displayException e)
   where
-    die' m = hPutStrLn stderr ("hx: " ++ m) >> exitWith (ExitFailure 1)
+    die' m = do
+      prefix <- errorPrefix
+      hPutStrLn stderr (T.unpack prefix ++ " " ++ m)
+      exitWith (ExitFailure 1)
 
 main :: IO ()
 main = handle reportError $ do
   args <- getArgs
   envNet <- lookupEnv "HX_NETWORK"
-  let (netOpt, rest) = globalOpts args
-      net = parseNetwork (fromMaybe "btc" (netOpt <|> envNet))
+  envFormat <- lookupEnv "HX_FORMAT"
+  let (opts, rest) = globalOpts args
+      net = parseNetwork (fromMaybe "btc" (optNetwork opts <|> envNet))
+      json = case optJson opts of
+        Just j -> j
+        Nothing -> case map toLower <$> envFormat of
+          Just "json" -> True
+          Just "yaml" -> False
+          Nothing -> False
+          Just f -> error $ "HX_FORMAT must be yaml or json, not " ++ show f
+  setStyle =<< detectStyle json (optColor opts)
   _ <- evaluate net
   mainArgs net (toLowerFirst (map B8.pack rest))
   where
     toLowerFirst [] = []
     toLowerFirst (x : xs) = B8.map toLower x : xs
-

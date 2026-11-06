@@ -1,0 +1,45 @@
+- name: btc
+  aliases:
+    - btc
+    - bitcoin
+    - main
+    - mainnet
+- name: btctest
+  aliases:
+    - btctest
+    - btc-test
+    - test
+    - testnet
+    - testnet3
+- name: btctest4
+  aliases:
+    - btctest4
+    - btc-test4
+    - testnet4
+- name: btcreg
+  aliases:
+    - btcreg
+    - btc-regtest
+    - btcregtest
+    - regtest
+- name: bch
+  aliases:
+    - bch
+    - bitcoincash
+    - bitcoin-cash
+    - cash
+- name: bchtest
+  aliases:
+    - bchtest
+    - bch-test
+    - bchtestnet
+- name: bchtest4
+  aliases:
+    - bchtest4
+    - bch-test4
+    - bchtestnet4
+- name: bchreg
+  aliases:
+    - bchreg
+    - bch-regtest
+    - bchregtest

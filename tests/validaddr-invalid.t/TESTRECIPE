@@ -3,7 +3,7 @@
 testname=validaddr-invalid.t
 command=hx
 args=( validaddr )
-exit_code=0
+exit_code=1
 stdin_file=stdin
 stdout_file=stdout
 stderr_file=/dev/null

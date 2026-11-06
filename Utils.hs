@@ -17,6 +17,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Data.Word (Word32, Word64, Word8)
 import qualified Haskoin.Util as H
+import Output (Out (..))
 
 type BS = BS.ByteString
 
@@ -84,9 +85,6 @@ toText = TE.decodeUtf8
 
 fromText :: T.Text -> BS
 fromText = TE.encodeUtf8
-
-putLn :: (IsString s, Semigroup s) => s -> s
-putLn = (<> "\n")
 
 showB8 :: (Show a) => a -> BS
 showB8 = B8.pack . show
@@ -188,36 +186,28 @@ takeFlag names args = (any (`elem` names) args, filter (`notElem` names) args)
 
 -- * Interaction with standard input and output
 
-interactLn :: (BS -> BS) -> IO ()
-interactLn f = do
-  s <- BS.getContents
-  r <- evaluate (f s)
-  B8.putStr (putLn r)
+-- | Apply a function to standard input and print its result.
+interactLn :: (Out o) => (BS -> o) -> IO ()
+interactLn f = emit . f =<< BS.getContents
 
-interactArgs' :: (IsString s, Eq s) => (s -> IO ()) -> IO s -> ([s] -> s) -> [s] -> IO ()
-interactArgs' puts gets f [] = puts . f . pure =<< gets
-interactArgs' puts gets f xs = case length (filter (== "-") xs) of
+-- | Apply a function to the arguments, where a single '-' argument (or no
+-- argument at all) stands for standard input.
+interactArgs' :: ([BS] -> o) -> (o -> IO ()) -> [BS] -> IO ()
+interactArgs' f puts [] = puts . f . pure =<< BS.getContents
+interactArgs' f puts xs = case length (filter (== "-") xs) of
   0 -> puts (f xs)
-  1 -> gets >>= (\s -> puts . f $ map (subst ("-", s)) xs)
+  1 -> BS.getContents >>= (\s -> puts . f $ map (subst ("-", s)) xs)
   n -> error $ "Using '-' to read from standard input can be used only once, not " ++ show n ++ " times."
 
-strictPut :: (BS -> IO ()) -> BS -> IO ()
-strictPut out s = evaluate (BS.length s) >> out s
+interactArgs :: (Out o) => ([BS] -> o) -> [BS] -> IO ()
+interactArgs f = interactArgs' f emit
 
-interactArgs :: ([BS] -> BS) -> [BS] -> IO ()
-interactArgs = interactArgs' (strictPut BS.putStr) BS.getContents
-
-interactArgsLn :: ([BS] -> BS) -> [BS] -> IO ()
-interactArgsLn = interactArgs . (putLn .)
-
-interactArg :: String -> (BS -> BS) -> [BS] -> IO ()
+-- | Like 'interactArgs' for commands taking exactly one argument.
+interactArg :: (Out o) => String -> (BS -> o) -> [BS] -> IO ()
 interactArg msg f = interactArgs f'
   where
     f' [x] = f x
     f' _ = error $ "Too many arguments.\nUsage: " ++ msg
-
-interactArgLn :: String -> (BS -> BS) -> [BS] -> IO ()
-interactArgLn msg = interactArg msg . (putLn .)
 
 -- | Read one hexadecimal argument (or standard input) and print the result
 -- of the function in hexadecimal.
@@ -225,14 +215,14 @@ interactHex :: String -> (BS -> BS) -> [BS] -> IO ()
 interactHex msg f = interactArg msg (withHex f)
 
 withHex :: (BS -> BS) -> BS -> BS
-withHex f = putLn . encodeHex . f . decodeHex "input"
+withHex f = encodeHex . f . decodeHex "input"
 
-writeArg :: BS -> BS -> IO ()
-writeArg "-" = strictPut BS.putStr
-writeArg fp = strictPut (BS.writeFile (B8.unpack fp))
-
+-- | Write a raw result to a file, or print it when the file is '-'.
 interactFileArgs :: ([BS] -> BS) -> BS -> [BS] -> IO ()
-interactFileArgs f file = interactArgs' (writeArg file) BS.getContents f
+interactFileArgs f "-" = interactArgs' f emit
+interactFileArgs f file = interactArgs' f $ \r -> do
+  _ <- evaluate (BS.length r)
+  BS.writeFile (B8.unpack file) r
 
 splitOnBS :: Char -> BS -> (BS, BS)
 splitOnBS c s =

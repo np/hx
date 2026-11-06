@@ -12,10 +12,10 @@ module Electrum
 where
 
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Char8 as B8
 import Data.Word (Word32)
 import EC
 import Haskoin (Network)
+import Output (Val (..))
 import Keys (addrText, p2pkhOfPubBytes, secretToWif)
 import Utils
 
@@ -79,24 +79,25 @@ hx_electrum_mpk = encodeHex . mpk_bytes . derived_mpk . decode_seed
 hx_electrum_stretch_seed :: BS -> BS
 hx_electrum_stretch_seed = encodeHex . stretched_seed_bytes . decode_seed
 
-hx_electrum_priv :: Network -> [BS] -> BS -> BS
+hx_electrum_priv :: Network -> [BS] -> BS -> Val
 hx_electrum_priv net = hx_electrum_args "electrum-priv" decode_seed $ \n c s ->
   secretToWif net False (derive_priv n c s)
 
-hx_electrum_sequence :: [BS] -> BS -> BS
+hx_electrum_sequence :: [BS] -> BS -> Val
 hx_electrum_sequence = hx_electrum_args "electrum-seq" decode_mpk $ \n c s ->
   encodeHex $ sequenceBS n c s
 
-hx_electrum_pub :: [BS] -> BS -> BS
+hx_electrum_pub :: [BS] -> BS -> Val
 hx_electrum_pub = hx_electrum_args "electrum-pub" decode_mpk $ \n c s ->
   encodeHex . encodePoint False $ derive_pub n c s
 
-hx_electrum_addr :: Network -> [BS] -> BS -> BS
+hx_electrum_addr :: Network -> [BS] -> BS -> Val
 hx_electrum_addr net = hx_electrum_args "electrum-addr" decode_mpk $ \n c s ->
   addrText net . p2pkhOfPubBytes . encodePoint False $ derive_pub n c s
 
-hx_electrum_args :: String -> (BS -> i) -> (Word32 -> Bool -> i -> BS) -> [BS] -> BS -> BS
-hx_electrum_args name decode_input f args0 s =
+-- | A single key for one index, or a list of keys for a range of indices.
+hx_electrum_args :: String -> (BS -> i) -> (Word32 -> Bool -> i -> BS) -> [BS] -> BS -> Val
+hx_electrum_args name decode_input f0 args0 s =
   case args0 of
     [] -> usage
     n_str : args1 ->
@@ -109,8 +110,9 @@ hx_electrum_args name decode_input f args0 s =
                     [] -> f n for_change input
                     [stop_str] ->
                       let stop = parseWord32 "electrum sequence stop index" stop_str
-                       in B8.intercalate "\n" [f i for_change input | i <- [n .. stop]]
+                       in List [f i for_change input | i <- [n .. stop]]
                     _ -> usage
   where
+    f i c x = Str (toText (f0 i c x))
     usage = error $ "Usage: hx " ++ name ++ " <INDEX> [<CHANGE-0|1>] [<RANGE-STOP>]"
     input = decode_input s

@@ -3,7 +3,7 @@
 testname=validaddr-cashaddr-on-btc.t
 command=hx
 args=( validaddr bitcoincash:qpm2qsznhks23z7629mms6s4cwef74vcwvy22gdx6a )
-exit_code=0
+exit_code=1
 stdin_file=/dev/null
 stdout_file=stdout
 stderr_file=/dev/null
