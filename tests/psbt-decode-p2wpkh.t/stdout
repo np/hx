@@ -1,0 +1,43 @@
+id: 171991de9084f82074f816451df5e8ce1559c93019cf3dc170bf0a969b0892a8
+version: 0
+complete: false
+fee: 10000
+inputs:
+  - index: 0
+    final: false
+    partial_signatures: 1
+    taproot_key_signature: false
+    utxo:
+      value: 100000
+      type: p2wpkh
+      address: bc1q9cy7s7nmzah0m6mt2ftmu6x723esjxqkkl4wsw
+      script:
+        asm: 0 [ 2e09e87a7b176efdeb6b5257be68de5473091816 ]
+        hex: 00142e09e87a7b176efdeb6b5257be68de5473091816
+tx:
+  txid: 171991de9084f82074f816451df5e8ce1559c93019cf3dc170bf0a969b0892a8
+  wtxid: 171991de9084f82074f816451df5e8ce1559c93019cf3dc170bf0a969b0892a8
+  version: 2
+  locktime: 0
+  rbf: true
+  size: 101
+  vsize: 101
+  weight: 404
+  value_out: 90000
+  inputs:
+    - outpoint: c6da1b9c8674fd9a4d07f2a87be849f2f439ddc5ccdc1410ef3e5d760233dedd:0
+      sequence: 4294967293
+  outputs:
+    - index: 0
+      value: 90000
+      type: p2pkh
+      address: 1MyKMeDsom7rYcp69KpbKn4DcyuvLMkLYJ
+      script:
+        asm: dup hash160 [ e60921dbfe1e066113f1c6e0ea15517234187d47 ] equalverify checksig
+        hex: 76a914e60921dbfe1e066113f1c6e0ea15517234187d4788ac
+    - index: 1
+      value: 0
+      type: nulldata
+      script:
+        asm: return [ 68656c6c6f ]
+        hex: 6a0568656c6c6f

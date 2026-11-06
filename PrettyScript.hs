@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedRecordDot #-}
 module PrettyScript
   (prettyOp
   ,prettyOps
@@ -5,10 +6,11 @@ module PrettyScript
   ,showDoc
   ) where
 
-import Network.Haskoin.Internals (Script(..),ScriptOp(..))
-import Data.ByteString.Char8 (ByteString,unpack)
+import Haskoin (Script(..),ScriptOp(..))
+import Data.ByteString (ByteString)
+import qualified Data.Text as T
+import qualified Haskoin as H
 import Data.List (intersperse)
-import qualified Data.ByteString.Base16 as B16
 
 type Doc = ShowS
 
@@ -28,10 +30,12 @@ int :: Int -> Doc
 int = tok . show
 
 hex :: ByteString -> Doc
-hex = tok . unpack . B16.encode
+hex = tok . T.unpack . H.encodeHex
 
-prettyOp :: ScriptOp -> Doc
-prettyOp o = case o of
+-- | The first argument tells whether the script is for Bitcoin Cash, where
+-- opcode 0xba is OP_CHECKDATASIG rather than OP_CHECKSIGADD.
+prettyOp :: Bool -> ScriptOp -> Doc
+prettyOp cash o = case o of
     OP_PUSHDATA ws _d     -> bracket $ hex ws
 
     -- Constants
@@ -155,8 +159,8 @@ prettyOp o = case o of
 
     -- More NOPs
     OP_NOP1               -> tok "nop1"
-    OP_NOP2               -> tok "nop2"
-    OP_NOP3               -> tok "nop3"
+    OP_CHECKLOCKTIMEVERIFY -> tok "checklocktimeverify"
+    OP_CHECKSEQUENCEVERIFY -> tok "checksequenceverify"
     OP_NOP4               -> tok "nop4"
     OP_NOP5               -> tok "nop5"
     OP_NOP6               -> tok "nop6"
@@ -165,11 +169,18 @@ prettyOp o = case o of
     OP_NOP9               -> tok "nop9"
     OP_NOP10              -> tok "nop10"
 
-prettyOps :: [ScriptOp] -> Doc
-prettyOps = sep . map prettyOp
+    -- Opcode 0xba
+    OP_CHECKDATASIG
+      | cash              -> tok "checkdatasig"
+      | otherwise         -> tok "checksigadd"
+    OP_CHECKDATASIGVERIFY -> tok "checkdatasigverify"
+    OP_REVERSEBYTES       -> tok "reversebytes"
 
-prettyScript :: Script -> Doc
-prettyScript = prettyOps . scriptOps
+prettyOps :: Bool -> [ScriptOp] -> Doc
+prettyOps cash = sep . map (prettyOp cash)
+
+prettyScript :: Bool -> Script -> Doc
+prettyScript cash = prettyOps cash . (.ops)
 
 showDoc :: Doc -> String
 showDoc d = d ""

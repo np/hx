@@ -1,0 +1,42 @@
+#!/bin/bash
+
+testname=schnorr-verify-bip340-wrong-message.t
+command=hx
+args=( schnorr-verify f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9 e907831f80848d1069a5371b402410364bdf1c5f8307b0084c55f1ce2dca821525f66a4a85ea8b71e482a74f382d2ce5ebeee8fdb2172f477df4900d310536c0 0000000000000000000000000000000000000000000000000000000000000001 )
+exit_code=1
+stdin_file=/dev/null
+stdout_file=stdout
+stderr_file=/dev/null
+sources=( )
+products=( )
+
+# Environment variables:
+env_vars=( )
+
+setup(){
+  : Perform here actions to be run before the tested program
+}
+
+munge(){
+  : Munge here the results of the tested program to ease the check
+}
+
+check(){
+  check_exit_code &&
+  check_stderr &&
+  check_stdout &&
+  check_products &&
+  : Perform here extra checks on the tested program
+}
+
+explain(){
+  explain_exit_code
+  explain_stdout
+  explain_stderr
+  explain_products
+  : Explain here more potential differences
+}
+
+teardown(){
+  : Undo here the actions of setup
+}

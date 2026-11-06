@@ -1,93 +1,170 @@
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
-module DetailedTx where
 
-import Data.Aeson hiding (decode')
-import Data.Aeson.Types (Pair)
-import qualified Data.ByteString.Lazy as LBS
+-- | Structured descriptions of transactions and extended keys.
+module DetailedTx
+  ( txDetails,
+    xPrvDetails,
+    xPubDetails,
+    outputType,
+    scriptDetails,
+    addressesOf,
+  )
+where
+
+import Context (ctx)
+import qualified Data.ByteString as BS
+import Data.Bytes.Get (runGetS)
+import Data.Bytes.Serial (deserialize)
+import Data.Maybe (catMaybes)
+import Data.Text (Text)
 import qualified Data.Text as T
+import Haskoin hiding (decodeHex, encodeHex)
+import Keys
+import Output
+import PrettyScript (prettyScript, showDoc)
+import Utils
 
-import Network.Haskoin.Crypto (pubKeyAddr,addrToBase58,derivePubKey,toWif)
-import Network.Haskoin.Transaction (txHash)
-import Network.Haskoin.Internals (Tx(..), TxIn(..), TxOut(..)
-                                 ,scriptSender, scriptRecipient
-                                 ,XPrvKey(..),XPubKey(..)
-                                 ,xPrvIsHard,xPrvChild,xPubIsHard,xPubChild
-                                 )
-import Network.Haskoin.Util (eitherToMaybe,decode')
-import Utils (putHex)
+decodeScriptE :: BS -> Either String Script
+decodeScriptE = runGetS deserialize
 
-import PrettyScript (showDoc, prettyScript)
+-- | A script as assembly and hexadecimal.
+scriptDetails :: Network -> BS -> Val
+scriptDetails net bs =
+  obj
+    [ "asm" .: case decodeScriptE bs of
+        Right s -> T.pack (showDoc (prettyScript (isCashNet net) s))
+        Left _ -> "<unparsable script>",
+      "hex" .: encodeHex bs
+    ]
 
-(.=$) :: T.Text -> String -> Pair
-(.=$) x y = x .= y
+-- | Drop the fields whose value is null.
+present :: [(Text, Val)] -> [(Text, Val)]
+present = filter ((/= Null) . snd)
 
-newtype DetailedTx    = DetailedTx    { _unDetailedTx    :: Tx    }
-newtype DetailedTxIn  = DetailedTxIn  { _unDetailedTxIn  :: TxIn  }
-newtype DetailedTxOut = DetailedTxOut { _unDetailedTxOut :: TxOut }
-newtype DetailedXPrvKey = DetailedXPrvKey { _unDetailedXPrvKey :: XPrvKey }
-newtype DetailedXPubKey = DetailedXPubKey { _unDetailedXPubKey :: XPubKey }
+addrV :: Network -> Maybe Address -> Val
+addrV net ma = toVal (ma >>= addrTextMaybe net)
 
-instance ToJSON DetailedTx where
-  toJSON (DetailedTx tx) =
-    object
-      ["hash"     .= txHash tx
-      ,"version"  .= txVersion tx
-      ,"locktime" .= txLockTime tx
-      ,"inputs"   .= map DetailedTxIn  (txIn  tx)
-      ,"outputs"  .= map DetailedTxOut (txOut tx)
+txDetails :: Network -> Tx -> Val
+txDetails net tx =
+  obj
+    [ "txid" .: txHashToHex (txHash tx),
+      "wtxid" .: txHashToHex (txWitnessHash tx),
+      "version" .: tx.version,
+      "locktime" .: tx.locktime,
+      "rbf" .: any ((< 0xfffffffe) . (.sequence)) tx.inputs,
+      "size" .: BS.length (encodeS tx),
+      "vsize" .: txVirtualSize tx,
+      "weight" .: txWeight tx,
+      "value_out" .: sum (map (toInteger . (.value)) tx.outputs),
+      "inputs" .: zipWith (txInDetails net) tx.inputs witnesses,
+      "outputs" .: zipWith (txOutDetails net) [0 :: Int ..] tx.outputs
+    ]
+  where
+    witnesses = tx.witness ++ repeat []
+
+txInDetails :: Network -> TxIn -> WitnessStack -> Val
+txInDetails net i wit =
+  obj . present $
+    [ "outpoint" .: (txHashToHex i.outpoint.hash <> ":" <> T.pack (show i.outpoint.index)),
+      "sequence" .: i.sequence,
+      "address" .: addrV net (inputAddr net i.script wit)
+    ]
+      ++ ["script" .: scriptDetails net i.script | not (BS.null i.script)]
+      ++ ["witness" .: map encodeHex wit | not (null wit)]
+
+-- | Guess the address an input spends from its script and witness.
+inputAddr :: Network -> BS -> WitnessStack -> Maybe Address
+inputAddr net script wit
+  -- P2WPKH: empty script, witness [signature, compressed public key]
+  | BS.null script, [_, pk] <- wit, BS.length pk == 33 = do
+      pub <- eitherToMaybe (unmarshal ctx pk)
+      pubKeyWitnessAddr ctx pub
+  -- P2TR key path spend, or an unsigned input
+  | BS.null script = Nothing
+  | otherwise = do
+      s <- eitherToMaybe (decodeScriptE script)
+      case eitherToMaybe (decodeInput net ctx s) >>= inputAddress ctx of
+        Just a -> Just a
+        -- Old transactions may carry signatures that are not strictly
+        -- encoded, which decodeInput rejects. Fall back on the shape of a
+        -- pay-to-public-key-hash spend: a signature and a public key.
+        Nothing -> case s.ops of
+          [OP_PUSHDATA _ _, OP_PUSHDATA pk _] ->
+            pubKeyAddr ctx <$> eitherToMaybe (unmarshal ctx pk)
+          _ -> Nothing
+
+txOutDetails :: Network -> Int -> TxOut -> Val
+txOutDetails net n o =
+  obj . present $
+    [ "index" .: n,
+      "value" .: o.value,
+      "type" .: outputType o.script,
+      "address" .: addrV net (eitherToMaybe (scriptToAddressBS net ctx o.script)),
+      "script" .: scriptDetails net o.script
+    ]
+
+-- | A short name for the kind of output script.
+outputType :: BS -> Text
+outputType bs = case decodeScriptE bs >>= decodeOutput ctx of
+  Right PayPK {} -> "p2pk"
+  Right PayPKHash {} -> "p2pkh"
+  Right PayMulSig {} -> "multisig"
+  Right PayScriptHash {} -> "p2sh"
+  Right PayWitnessPKHash {} -> "p2wpkh"
+  Right PayWitnessScriptHash {} -> "p2wsh"
+  Right (PayWitness 1 p) | BS.length p == 32 -> "p2tr"
+  Right PayWitness {} -> "witness_unknown"
+  Right PayScript32Hash {} -> "p2sh32"
+  Right DataCarrier {} -> "nulldata"
+  Left _ -> "nonstandard"
+
+-- | Addresses of a public key, by type, for the network.
+addressesOf :: Network -> PublicKey -> Val
+addressesOf net pub =
+  obj $
+    catMaybes
+      [ (key .:) <$> addrTextMaybe net (addrOfPub ty pub)
+      | (key, ty) <-
+          [ ("p2pkh", AddrP2PKH),
+            ("p2wpkh", AddrP2WPKH),
+            ("p2sh-p2wpkh", AddrP2SH_P2WPKH),
+            ("p2tr", AddrP2TR)
+          ],
+        pub.compress || ty == AddrP2PKH
       ]
 
-instance ToJSON DetailedTxIn where
-  toJSON (DetailedTxIn i) =
-    object
-      ["previous_output" .= prevOutput i
-      ,"script"          .= showDoc (prettyScript script)
-      ,"sequence"        .= txInSequence i
-      ,"address"         .= eitherToMaybe (scriptSender script)
-      ]
-    where script = decode' $ scriptInput i
+xKeyPairs :: Network -> XPubKey -> [(Text, Val)]
+xKeyPairs net k =
+  [ "network" .: T.pack net.name,
+    "depth" .: k.depth,
+    "index" .: xPubChild k,
+    "hardened" .: xPubIsHard k,
+    "fingerprint" .: fingerprintToText (xPubFP ctx k),
+    "parent_fingerprint" .: fingerprintToText k.parent,
+    "chain_code" .: encodeHex (encodeS k.chain)
+  ]
 
-instance ToJSON DetailedTxOut where
-  toJSON (DetailedTxOut o) =
-    object
-      ["value"   .= outValue o
-      ,"script"  .= showDoc (prettyScript script)
-      ,"address" .= eitherToMaybe (scriptRecipient script)
-      ]
-    where script = decode' $ scriptOutput o
+xPrvDetails :: Network -> XPrvKey -> Val
+xPrvDetails net k =
+  obj $
+    ("type" .: ("xprv" :: Text))
+      : xKeyPairs net pub
+      ++ [ "xprv" .: xPrvExport net k,
+           "xpub" .: xPubExport net ctx pub,
+           "wif" .: xPrvWif net k,
+           "pubkey" .: putPubKey (wrapPubKey True pub.key),
+           "addresses" .: addressesOf net (wrapPubKey True pub.key)
+         ]
+  where
+    pub = deriveXPubKey ctx k
 
-instance ToJSON DetailedXPrvKey where
-  toJSON (DetailedXPrvKey k) =
-    object
-      ["type"    .=$ "xprv"
-      ,"depth"   .=  xPrvDepth k
-      ,"parent"  .=  xPrvParent k
-      ,"index"   .=  object ["value" .= xPrvIndex k
-                            ,(if xPrvIsHard k then "hard" else "soft") .= xPrvChild k
-                            ]
-      ,"chain"   .=  xPrvChain k
-      ,"prvkey"  .=  toWif (xPrvKey k)
-      ,"pubkey"  .=$ putHex pub
-      ,"address" .=  addrToBase58 addr
-      ]
-   where pub  = derivePubKey (xPrvKey k)
-         addr = pubKeyAddr pub
-
-instance ToJSON DetailedXPubKey where
-  toJSON (DetailedXPubKey k) =
-    object
-      ["type"    .=$ "xpub"
-      ,"depth"   .=  xPubDepth k
-      ,"parent"  .=  xPubParent k
-      ,"index"   .=  object ["value" .= xPubIndex k
-                            ,(if xPubIsHard k then "hard" else "soft") .= xPubChild k
-                            ]
-      ,"chain"   .=  xPubChain k
-      ,"pubkey"  .=$ putHex pub
-      ,"address" .=  addrToBase58 addr
-      ]
-   where pub  = xPubKey k
-         addr = pubKeyAddr pub
-
-txDetailedJSON :: Tx -> LBS.ByteString
-txDetailedJSON = encode . toJSON . DetailedTx
+xPubDetails :: Network -> XPubKey -> Val
+xPubDetails net k =
+  obj $
+    ("type" .: ("xpub" :: Text))
+      : xKeyPairs net k
+      ++ [ "xpub" .: xPubExport net ctx k,
+           "pubkey" .: putPubKey (wrapPubKey True k.key),
+           "addresses" .: addressesOf net (wrapPubKey True k.key)
+         ]

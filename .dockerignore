@@ -2,3 +2,5 @@
 .gup
 .gitignore
 dist
+.stack-work
+*.swp

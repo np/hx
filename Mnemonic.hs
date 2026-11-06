@@ -5,9 +5,7 @@ import qualified Data.Map as Map
 import Data.Maybe
 import Data.Word
 import Data.Bits
-import Control.Arrow (first)
 import qualified Data.ByteString as B8
-import qualified Data.ByteString.Base16 as B16
 
 -- Electrum compatible mnemonic conversions
 
@@ -208,9 +206,6 @@ w32_to_w8 (w:ws) = w0:w1:w2:w3:w32_to_w8 ws
         w1 = fi $ w `shiftR` 16
         w0 = fi $ w `shiftR` 24
 
-hex_to_mn :: B8.ByteString -> ([W], B8.ByteString)
-hex_to_mn = first bytes_to_mn . B16.decode
-
 bytes_to_mn :: B8.ByteString -> [W]
 bytes_to_mn = map wAt . mn_encode_w32 . w8_to_w32 . B8.unpack
 
@@ -220,9 +215,6 @@ mn_encode_w32 (x:xs) = w1:w2:w3:mn_encode_w32 xs
   where w1 =  (x `mod` n)
         w2 = ((x `div` n) + w1) `mod` n
         w3 = ((x `div` (n * n)) + w2) `mod` n
-
-mn_to_hex :: [W] -> B8.ByteString
-mn_to_hex = B16.encode . mn_to_bytes
 
 mn_to_bytes :: [W] -> B8.ByteString
 mn_to_bytes = B8.pack . w32_to_w8 . mn_decode_w32 . map wordIndex

@@ -1,0 +1,1 @@
+{"address":"1JwSSubhmg6iPtRjtyqhUYYH7bZg3Lfy1T","network":"btc","type":"p2pkh","version":0,"hash":"c4c5d791fcb4654a1ef5e03fe0ad3d9c598f9827","script":{"asm":"dup hash160 [ c4c5d791fcb4654a1ef5e03fe0ad3d9c598f9827 ] equalverify checksig","hex":"76a914c4c5d791fcb4654a1ef5e03fe0ad3d9c598f982788ac"}}

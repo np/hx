@@ -1,0 +1,30 @@
+txid: 171991de9084f82074f816451df5e8ce1559c93019cf3dc170bf0a969b0892a8
+wtxid: f948fe49892a78601f1392ce56f3e3dfff0801596c3cf8906021c7557f4464cd
+version: 2
+locktime: 0
+rbf: true
+size: 210
+vsize: 129
+weight: 513
+value_out: 90000
+inputs:
+  - outpoint: c6da1b9c8674fd9a4d07f2a87be849f2f439ddc5ccdc1410ef3e5d760233dedd:0
+    sequence: 4294967293
+    address: bc1q9cy7s7nmzah0m6mt2ftmu6x723esjxqkkl4wsw
+    witness:
+      - 304402202f3f41d82642740cbd26c4b36466483d679c8aff50dc01cf9fc419e02ad3c2fb02207dbc347e55941ea4115eb4d2ac233031d588534e4554f61f9504663b2281297101
+      - 03d2be3dddb497c7c4388cfcb941e14a222cf3e26fe5e2cc260da1821e60d26022
+outputs:
+  - index: 0
+    value: 90000
+    type: p2pkh
+    address: 1MyKMeDsom7rYcp69KpbKn4DcyuvLMkLYJ
+    script:
+      asm: dup hash160 [ e60921dbfe1e066113f1c6e0ea15517234187d47 ] equalverify checksig
+      hex: 76a914e60921dbfe1e066113f1c6e0ea15517234187d4788ac
+  - index: 1
+    value: 0
+    type: nulldata
+    script:
+      asm: return [ 68656c6c6f ]
+      hex: 6a0568656c6c6f
